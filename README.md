@@ -78,4 +78,17 @@ GitHub Pages is configured to deploy the `docs` directory on `main`. The reposit
 
 ### Data and interpretation
 
-The website's `results.json` includes behavioral aggregates, published GS027 category/choice sequences, existing model comparison results, and source-file SHA-256 checksums. The 20-run rollout diagnostic was computed from existing GS027 parameters without refitting. The visual mouse and apparatus are illustrative, not a biomechanical or connectome model. Random-trial cross-validation is not a forecast of future training. Inferred GLM-HMM states are not directly observed psychological states.
+The website's `results.json` includes behavioral aggregates, published GS027 category/choice sequences, existing model comparison results, and source-file SHA-256 checksums. The 50-run rollout diagnostic was computed from existing GS027 parameters without refitting. The visual mouse and apparatus are illustrative, not a biomechanical or connectome model. Random-trial cross-validation is not a forecast of future training. Inferred GLM-HMM states are not directly observed psychological states.
+
+
+### Numerical verification
+
+The article includes a [numerical audit](docs/auditory_categorization_learning/audit-report.json) and an [original Python reference run](docs/auditory_categorization_learning/reference-run.json). The audit passed 787 checks against the analysis source. Browser choices and rewards match exactly under the same random stream; the maximum numerical difference in probabilities, Q values, and rolling curves is 2.22e-16. The three reference plots match the original plotting function at all 400 points per trace.
+
+Paper Figure 1 and thesis analyses use different training cutoffs. The article now offers both windows. A new Python seed (2021) makes the simulation reproducible; the historical notebook did not seed Python’s random module, so the original paper’s particular random realization is not claimed. Saved GLM, PsyTrack, and GLM-HMM results were checked against CSV exports without refitting.
+
+To rerun with the original analysis checkout and its data available:
+
+```sh
+python3 audit_and_export.py /path/to/AuditoryCategorizationSwat
+```
