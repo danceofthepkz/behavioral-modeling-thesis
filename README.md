@@ -92,3 +92,10 @@ To rerun with the original analysis checkout and its data available:
 ```sh
 python3 audit_and_export.py /path/to/AuditoryCategorizationSwat
 ```
+
+
+### Published study and thesis work
+
+The paper’s public code is at https://github.com/geffenlab/CategorizationStrategies and its data at https://doi.org/10.5061/dryad.73n5tb359. Steven Peng’s thesis analyses are ongoing; the full thesis analysis code has not yet been publicly released. The website presents selected preliminary summaries and its own implementation and validation files.
+
+The 3D apparatus illustrates a head-fixed mouse, forepaw wheel, and lick spout. Water delivery follows the existing binary RL reward. The paper reports approximately 4–5 μL per reward; the animation does not model hydration, licking biomechanics, or measured motion.
