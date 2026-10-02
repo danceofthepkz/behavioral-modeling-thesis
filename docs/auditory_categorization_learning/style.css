@@ -6,3 +6,5 @@
 [hidden]{display:none!important}
 
 .scene-view{position:absolute;right:14px;top:12px;font-size:12px;color:var(--secondary)}.scene-view select{font-size:12px;padding:3px 6px;min-height:28px}.scene-status{max-width:65%;font-size:13px}.water-status{position:absolute;bottom:38px;left:16px;display:flex;gap:8px;align-items:center;font-size:13px;color:var(--secondary);padding:5px 9px;background:#fffffff0;border:1px solid #dae3e7;border-radius:3px}.water-status.delivered{color:#0877bd;border-color:#7fbcda}.water-icon{color:#93a8b2}.delivered .water-icon{color:#0877bd}.scene{height:480px}.simulation-layout{grid-template-columns:1.3fr 1fr}.compact{height:226px}.values{height:180px}@media(max-width:750px){.simulation-layout{grid-template-columns:1fr}.scene{height:390px}.scene-status{max-width:58%}}
+
+.state-title{font-size:16px;margin:20px 0 0}.state-plot{height:280px}.state-point{pointer-events:none}#state-detail{min-height:25px;margin:10px 0}#state-trial-value{font-variant-numeric:tabular-nums;min-width:85px;text-align:right}.state-cursor{pointer-events:none}
