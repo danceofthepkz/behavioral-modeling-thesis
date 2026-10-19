@@ -3,6 +3,7 @@ results/
 plans/
 logs/
 dist/
+local_notes/
 .venv/
 __pycache__/
 *.pyc

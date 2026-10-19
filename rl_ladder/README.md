@@ -162,8 +162,8 @@ scripts/slurm/submit.sh model_recovery --chunk 2 --time 02:00:00
 ```
 
 `submit.sh` writes a plan, submits a job array (one index = `--chunk` units)
-and a collect job that runs afterwards. Step-by-step instructions, in Chinese:
-[FIREBIRD.md](FIREBIRD.md).
+and a collect job that runs afterwards. See the Environment and Data sections
+below for setup and input requirements.
 
 ## Environment
 

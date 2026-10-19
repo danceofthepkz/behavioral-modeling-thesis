@@ -9,6 +9,7 @@ out="$HERE/dist/rl_ladder_$(date +%Y%m%d_%H%M).tar.gz"
 COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "$out" \
     --exclude='rl_ladder/results' --exclude='rl_ladder/logs' --exclude='rl_ladder/plans' \
     --exclude='rl_ladder/dist' --exclude='rl_ladder/.venv' --exclude='__pycache__' \
+    --exclude='rl_ladder/local_notes' \
     --exclude='*.pyc' --exclude='.pytest_cache' --exclude='.DS_Store' \
     rl_ladder
 echo "Created $out"
