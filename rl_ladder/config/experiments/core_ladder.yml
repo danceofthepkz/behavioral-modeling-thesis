@@ -1,0 +1,14 @@
+about: >
+  The 10-model ladder on the 19 published mice, on the whole learning period and
+  on the first three sessions. Correction trials update the model but are left
+  out of the likelihood.
+task: fit
+models: core
+datasets: [paper19]
+overrides:
+  collect.contrasts: [[S+R, S+C], [A+R, A+C], [S0, A0], [A+R, A0], [S+R+C, S+R], [S+R+C, S+C]]
+  collect.groups: paper_clusters
+grid:
+  preprocess.window:
+    - {method: all, n: 3}
+    - {method: first_sessions, n: 3}

@@ -1,0 +1,55 @@
+# Default settings for every stage. Override any key from the command line,
+#   --fit.n_starts=40   --preprocess.correction=include
+# or inside an experiment file (config/experiments/*.yml). Unknown keys are errors.
+
+paths:
+  data: null         # folder with <MOUSE>.npz and paper/<MOUSE>.npz; null -> $RL_LADDER_DATA
+  results: null      # null -> $RL_LADDER_RESULTS, else <project>/results
+  reference: null    # legacy fit targets; null -> $RL_LADDER_REFERENCE, else <data>/../validation
+
+data:
+  variant: paper     # paper: use paper/<MOUSE>.npz where it exists (GS028, JC052) | current
+  unknown_ct: infer  # mice without trial_type (JC039, paper GS028/JC052): infer | none
+
+preprocess:
+  window:
+    method: all      # all (curated learning period) | first_sessions | last_sessions
+    n: 3             # number of sessions for first_/last_sessions
+  correction: mask   # mask: update on correction trials, leave them out of the likelihood
+                     # include: count them (original paper) | drop: remove them
+
+model:
+  session_reset: [wsls]  # slots whose state restarts each session: stimulus, action, choice, wsls
+
+fit:
+  method: mle_multistart   # mle_multistart | bads (planned) | hierarchical (planned)
+  n_starts: 20             # random starts, drawn from each parameter's prior
+  maxiter: 3000
+  warm_start_from_nested: true  # also start from each nested parent's optimum
+  seed: 2026
+  repeat_tol: 0.01         # starts within this total NLL of the best count as repeats
+
+evaluate:
+  cv:
+    method: none           # none | chrono (fit early sessions, score later ones)
+    train_frac: 0.67
+
+validate:                  # parameter and model recovery
+  n_reps: 50               # datasets per generating model
+  param_source: prior      # prior | fitted (template mouse's own fit)
+  env: reactive            # reactive: task rule with correction trials | replay: real stimuli
+  max_ct: 3                # max consecutive correction trials (original simulation)
+  accuracy_range: [0.55, 0.95]  # reject prior draws outside this (non-correction accuracy)
+  max_tries: 50
+
+ppc:                       # posterior predictive checks
+  n_sims: 50
+  env: replay
+  max_ct: 3
+  block: 100               # trials per block for the bias-feedback analysis
+  analyses: [curves, bias_feedback]   # dtw is planned
+
+collect:
+  contrasts: []            # e.g. [[A+R, A0]]: per-mouse BIC preference counts
+  groups: null             # a `groups` entry of config/datasets.yml, e.g. paper_clusters
+  reference: none          # legacy: compare A0/A+R NLL with the published fits

@@ -1,0 +1,18 @@
+# Mouse lists, dataset presets and analysis groups.
+# A dataset argument can be a preset name, a single mouse ID, or a comma list.
+
+mice:
+  old19: [GS027, GS028, GS029, GS030, GS037, GS040, JC025, JC028, JC029, JC039,
+          JC044, JC047, JC048, JC052, JC057, JC059, JC061, JC062, JC067]
+  new5: [AS06, AS09, AS17, AS18, AS21]   # unpublished data
+
+datasets:
+  paper19:   {mice: old19, variant: paper}    # the 19 mice and windows of the published RL fits
+  current19: {mice: old19, variant: current}  # current thesis curation (GS028, JC052 shorter)
+  new5:      {mice: new5, variant: current}
+  all24:     {mice: [old19, new5], variant: current}
+
+groups:
+  paper_clusters:   # Collina et al. Fig. 4D (JC052 and JC061 were excluded there)
+    drifting:   [GS037, GS040, JC028, JC029, JC039, JC047, JC059, JC062]
+    stationary: [GS027, GS028, GS029, GS030, JC025, JC044, JC048, JC057, JC067]

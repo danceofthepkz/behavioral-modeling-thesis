@@ -1,0 +1,9 @@
+about: >
+  Simulate each core model from its prior, using the session structure of the
+  19 mice and the reactive correction-trial task, then refit the same model.
+task: param_recovery
+models: core
+datasets: [paper19]
+overrides:
+  validate.n_reps: 100
+  validate.param_source: prior

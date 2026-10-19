@@ -1,0 +1,43 @@
+# Every model fills three slots; the bias b is always free unless fixed.
+#   stimulus: none | S | S_cf | A     stimulus-specific value learning
+#   action:   none | V | gamma | wsls reward-dependent, stimulus-independent
+#   choice:   none | ck               reward-independent repetition (choice kernel)
+# Rules: gamma needs stimulus A. `fixed: {param: value}` pins a parameter,
+# `free: [param]` frees one that is normally fixed (see `python -m rl_ladder list params`).
+# Adding a model that only recombines existing variants needs no code change.
+
+models:
+  M1:      {stimulus: none, action: none,  choice: none, about: "random responding with bias"}
+  M2:      {stimulus: none, action: wsls,  choice: none, fixed: {b: 0.0}, about: "noisy win-stay/lose-shift"}
+  S0:      {stimulus: S,    action: none,  choice: none, about: "stimulus-specific RL"}
+  S+R:     {stimulus: S,    action: V,     choice: none, about: "S0 + reward-dependent action value"}
+  S+C:     {stimulus: S,    action: none,  choice: ck,   about: "S0 + choice kernel"}
+  S+R+C:   {stimulus: S,    action: V,     choice: ck,   about: "S0 + action value + choice kernel"}
+  A0:      {stimulus: A,    action: none,  choice: none, about: "paper's simple model (3 params)"}
+  A+R:     {stimulus: A,    action: gamma, choice: none, about: "paper's choice-history model (gamma = exp(-beta))"}
+  A+C:     {stimulus: A,    action: none,  choice: ck,   about: "A0 + choice kernel"}
+  A+R+C:   {stimulus: A,    action: gamma, choice: ck,   about: "A0 + gamma + choice kernel"}
+
+  # Variants outside the core ladder
+  S0cf:    {stimulus: S_cf, action: none,  choice: none, about: "S0 + counterfactual update of the unchosen action"}
+  A0T:     {stimulus: A,    action: none,  choice: none, free: [tau_a], about: "A0 with free inverse temperature"}
+  V:       {stimulus: none, action: V,     choice: none, about: "stimulus-blind action value"}
+  C:       {stimulus: none, action: none,  choice: ck,   about: "choice kernel only"}
+  V+C:     {stimulus: none, action: V,     choice: ck,   about: "stimulus-blind action value + choice kernel"}
+
+  # S family with the inverse temperature fixed at 5, as the paper fixes it for A.
+  # On the mouse data a free beta_q is not identifiable: mice learn slowly enough
+  # that only alpha * beta_q is constrained (alpha -> 0, beta_q -> inf, b -> bound).
+  S0f:     {stimulus: S,    action: none,  choice: none, fixed: {beta_q: 5.0}, about: "S0, beta_q fixed at 5"}
+  S+Rf:    {stimulus: S,    action: V,     choice: none, fixed: {beta_q: 5.0}, about: "S+R, beta_q fixed at 5"}
+  S+Cf:    {stimulus: S,    action: none,  choice: ck,   fixed: {beta_q: 5.0}, about: "S+C, beta_q fixed at 5"}
+  S+R+Cf:  {stimulus: S,    action: V,     choice: ck,   fixed: {beta_q: 5.0}, about: "S+R+C, beta_q fixed at 5"}
+
+sets:
+  core:      [M1, M2, S0, S+R, S+C, S+R+C, A0, A+R, A+C, A+R+C]
+  paper:     [A0, A+R]
+  baselines: [M1, M2]
+  S:         [S0, S+R, S+C, S+R+C]
+  A:         [A0, A+R, A+C, A+R+C]
+  blind:     [M1, V, C, V+C]
+  S_fixed:   [S0f, S+Rf, S+Cf, S+R+Cf]

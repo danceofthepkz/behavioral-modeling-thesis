@@ -1,0 +1,14 @@
+# Results and run artefacts are never committed (they derive from lab data).
+results/
+plans/
+logs/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+# Never commit mouse data, even by accident.
+*.npz
+*.pkl
+*.mat

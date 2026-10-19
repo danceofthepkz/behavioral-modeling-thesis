@@ -1,0 +1,10 @@
+# rl_ladder runtime + test dependencies (Python 3.11).
+# Versions match the `mice-rl` environment already validated on Firebird for
+# thesis/rl_firebird_v2, plus PyYAML (configs) and pytest (tests).
+numpy==1.26.3
+scipy==1.16.0
+numba==0.67.0
+pandas==2.2.0
+matplotlib==3.11.0
+PyYAML==6.0.3
+pytest==9.1.1

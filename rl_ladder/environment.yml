@@ -1,0 +1,10 @@
+# conda env for rl_ladder:  scripts/setup_env.sh conda
+# (or: conda env create -n rl-ladder -f environment.yml)
+name: rl-ladder
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -r requirements.txt

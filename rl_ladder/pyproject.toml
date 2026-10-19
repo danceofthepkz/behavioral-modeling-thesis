@@ -1,0 +1,25 @@
+[project]
+name = "rl-ladder"
+version = "0.1.0"
+description = "Modular reinforcement-learning model ladder for mouse auditory category learning"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "scipy>=1.11", "numba>=0.59", "pandas>=2.0", "PyYAML>=6.0",
+                "matplotlib>=3.8"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+rl-ladder = "rl_ladder.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rl_ladder*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]

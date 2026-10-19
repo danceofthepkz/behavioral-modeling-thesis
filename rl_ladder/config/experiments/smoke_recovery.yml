@@ -1,0 +1,7 @@
+about: Tiny model-recovery run to check the simulate-and-refit path.
+task: model_recovery
+models: [M1, S0, S+C]
+datasets: [GS029]
+overrides:
+  validate.n_reps: 2
+  fit.n_starts: 3

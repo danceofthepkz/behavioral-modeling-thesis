@@ -1,0 +1,9 @@
+about: >
+  Simulate each core model with each mouse's fitted parameters and fit all ten
+  candidates. Run core_ladder first so that the generating fits are cached.
+task: model_recovery
+models: core
+datasets: [paper19]
+overrides:
+  validate.n_reps: 50
+  validate.param_source: fitted

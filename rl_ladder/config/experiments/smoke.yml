@@ -1,0 +1,6 @@
+about: Tiny run to check an installation or a cluster setup (about a minute).
+task: fit
+models: [M1, M2, S0, A0, A+R]
+datasets: [GS029]
+overrides:
+  fit.n_starts: 3
