@@ -21,7 +21,7 @@ def _z_vector(spec, values):
     return np.array([P.to_z(p, values[p.name]) for p in spec.free_specs])
 
 
-def fit_mle(spec, trials, lik, reset, fit_cfg, seed, warm_starts=()):
+def fit_mle(spec, trials, lik, reset, fit_cfg, seed, warm_starts=(), *, record_starts=False):
     method = fit_cfg.get("method", "mle_multistart")
     if method != "mle_multistart":
         raise NotImplementedError(
@@ -60,26 +60,35 @@ def fit_mle(spec, trials, lik, reset, fit_cfg, seed, warm_starts=()):
     runs = []
     for kind, z0 in starts:
         if len(free) == 0:
-            runs.append({"kind": kind, "z": z0, "fun": objective(z0), "success": True,
+            runs.append({"kind": kind, "z0": z0, "z": z0, "fun": objective(z0), "success": True,
                          "nit": 0, "message": "no free parameters"})
             continue
         res = minimize(objective, z0, method="L-BFGS-B", bounds=bounds,
                        options={"maxiter": int(fit_cfg["maxiter"])})
         # Re-evaluate: never trust a stale res.fun after an abnormal line search.
-        runs.append({"kind": kind, "z": res.x, "fun": float(objective(res.x)),
+        runs.append({"kind": kind, "z0": z0, "z": res.x, "fun": float(objective(res.x)),
                      "success": bool(res.success), "nit": int(res.nit),
-                     "message": str(res.message)})
+                     "message": str(res.message), "status": int(getattr(res, "status", -1)),
+                     "nfev": int(getattr(res, "nfev", 0))})
 
-    best = min(runs, key=lambda r: r["fun"])
+    best_candidate = min(runs, key=lambda r: r["fun"])
+    # At an inactive module (e.g. beta_f = 0), a failed warm-start line search
+    # can differ from a successful fit only at floating-point precision.
+    # Prefer actual convergence within an absolute total-NLL tolerance;
+    # never hide a materially better failed candidate behind a worse success.
+    converged = [r for r in runs if r["success"] and r["fun"] <= best_candidate["fun"] + 1e-7]
+    best = min(converged, key=lambda r: r["fun"]) if converged else best_candidate
     theta = theta_of(best["z"])
     tol = float(fit_cfg.get("repeat_tol", 0.01))
     span = hi - lo
     at_bound = [p.name for p, z, l, h, s in zip(free, best["z"], lo, hi, span)
                 if min(z - l, h - z) <= 1e-6 * max(s, 1.0)]
-    return {
+    result = {
         "params": {p.name: float(theta[p.index]) for p in free},
         "theta": theta.tolist(),
         "nll": float(best["fun"]),
+        "best_nll_all_starts": float(best_candidate["fun"]),
+        "convergence_nll_gap": float(best["fun"] - best_candidate["fun"]),
         "k": spec.k,
         "n_trials": int(trials.n),
         "n_lik": float(lik.sum()),
@@ -92,3 +101,15 @@ def fit_mle(spec, trials, lik, reset, fit_cfg, seed, warm_starts=()):
         "at_bound": at_bound,
         "start_nlls": sorted(round(r["fun"], 4) for r in runs),
     }
+    if record_starts:
+        result.update({"seed": int(seed), "optimizer": "scipy.optimize.minimize/L-BFGS-B",
+                       "selected_start_index": next(i for i, r in enumerate(runs) if r is best),
+                       "selection": "minimum training NLL; converged ties within 1e-7 preferred",
+                       "start_records": [
+                           {"index": i, "kind": r["kind"], "selected": r is best,
+                            "initial_theta": theta_of(r["z0"]).tolist(),
+                            "theta": theta_of(r["z"]).tolist(), "nll": float(r["fun"]),
+                            "success": bool(r["success"]), "nit": int(r["nit"]),
+                            "message": r["message"], "status": r.get("status", 0),
+                            "nfev": r.get("nfev", 0)} for i, r in enumerate(runs)]})
+    return result

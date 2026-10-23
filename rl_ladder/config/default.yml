@@ -19,7 +19,8 @@ preprocess:
                      # include: count them (original paper) | drop: remove them
 
 model:
-  session_reset: [wsls]  # slots whose state restarts each session: stimulus, action, choice, wsls
+  session_reset: [wsls, feedback]  # reset options: stimulus, action, choice, wsls, feedback
+                                 # F resets by default; original Q/V/C policies are preserved.
 
 fit:
   method: mle_multistart   # mle_multistart | bads (planned) | hierarchical (planned)
@@ -33,6 +34,7 @@ evaluate:
   cv:
     method: none           # none | chrono (fit early sessions, score later ones)
     train_frac: 0.67
+    warm_start_from_nested: false  # training-parent optima only; enabled by reward_ladder
 
 validate:                  # parameter and model recovery
   n_reps: 50               # datasets per generating model
@@ -50,6 +52,7 @@ ppc:                       # posterior predictive checks
   analyses: [curves, bias_feedback]   # dtw is planned
 
 collect:
-  contrasts: []            # e.g. [[A+R, A0]]: per-mouse BIC preference counts
+  require_fit_success: false  # reward_ladder requires full-fit convergence and nesting
+  contrasts: []            # e.g. [[B0, A0]]: per-mouse BIC preference counts
   groups: null             # a `groups` entry of config/datasets.yml, e.g. paper_clusters
-  reference: none          # legacy: compare A0/A+R NLL with the published fits
+  reference: none          # legacy: compare A0/B0 NLL with the published fits

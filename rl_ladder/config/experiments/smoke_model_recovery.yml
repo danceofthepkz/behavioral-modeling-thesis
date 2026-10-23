@@ -1,0 +1,9 @@
+_include: recovery_main_old
+about: >
+  All 18 generators and all 18 candidates, on one old and one new template,
+  under both reset policies. Short windows test execution, not identifiability.
+datasets: [GS029, AS06]
+overrides:
+  validate.n_reps: 1
+  fit.n_starts: 5
+  preprocess.window: {method: first_sessions, n: 3}

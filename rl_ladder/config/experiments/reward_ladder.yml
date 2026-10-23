@@ -1,0 +1,29 @@
+about: >
+  Complete S-family comparison of independent R (action value V), C, and F.
+  All eight combinations share the original data, masking, chronological split
+  and reset policies. Training-parent CV starts prevent known nesting failures.
+task: fit
+models: S_extended
+datasets: [paper19]
+overrides:
+  evaluate.cv.method: chrono
+  evaluate.cv.warm_start_from_nested: true
+  collect.groups: paper_clusters
+  collect.require_fit_success: true
+  collect.contrasts:
+    - [S+R, S0]
+    - [S+R+C, S+C]
+    - [S+R+F, S+F]
+    - [S+R+F+C, S+F+C]
+    - [S+C, S0]
+    - [S+R+C, S+R]
+    - [S+F+C, S+F]
+    - [S+R+F+C, S+R+F]
+    - [S+F, S0]
+    - [S+F+C, S+C]
+    - [S+R+F, S+R]
+    - [S+R+F+C, S+R+C]
+grid:
+  model.session_reset:
+    - [wsls, feedback]
+    - [wsls, choice, feedback]

@@ -1,7 +1,7 @@
 import pytest
 
 from rl_ladder.config import apply_overrides, load_default, parse_cli_overrides
-from rl_ladder.models.registry import make_spec, parents
+from rl_ladder.models.registry import make_spec, parents, resolve_models
 from rl_ladder.service import context
 
 
@@ -22,5 +22,17 @@ def test_registry_rules():
     m = context().models
     assert m["M2"].free == ("eps",)
     assert parents(m["S+R+C"], m) == ["S+C", "S+R"]
-    assert parents(m["A+R"], m) == ["A0"]
-    assert [m[x].k for x in context().sets["core"]] == [1, 1, 4, 6, 6, 8, 3, 4, 5, 6]
+    assert parents(m["B0"], m) == ["A0"]
+    assert parents(m["B+F+C"], m) == ["A+F+C", "B+C", "B+F"]
+    assert m["B0"].stimulus == "B" and m["B0"].action == "none"
+    assert [m[x].k for x in context().sets["core"]] == [1, 1, 4, 6, 6, 8, 3, 4, 5, 6,
+                                                       6, 8, 5, 7, 6, 8, 8, 10]
+
+
+def test_historical_labels_resolve_to_new_names():
+    ctx = context()
+    with pytest.warns(FutureWarning, match="B0"):
+        assert resolve_models("A+R", ctx.models, ctx.sets) == ["B0"]
+    with pytest.warns(FutureWarning, match=r"B\+C"):
+        assert resolve_models("A+R+C", ctx.models, ctx.sets) == ["B+C"]
+    assert "A+R" not in ctx.models  # aliases do not duplicate recovery candidates

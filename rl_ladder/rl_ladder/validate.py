@@ -10,6 +10,8 @@ template mouse's own fit (`param_source: fitted`). Models without a stimulus
 slot (M1, M2, ...) cannot learn the task, so the accuracy filter skips them.
 """
 
+from copy import deepcopy
+
 import numpy as np
 
 from .data import Trials, load_mouse
@@ -18,6 +20,7 @@ from .models import kernel
 from .models import params as P
 from .models.registry import parents, reset_flags
 from .preprocess import apply_window, likelihood_weights
+from .provenance import environment_record, trial_signature
 from .service import get_or_fit, warm_start_from
 
 
@@ -26,12 +29,17 @@ def template_trials(mouse, cfg):
 
 
 def simulate_trials(spec, values, template, env, max_ct, reset, rng):
+    # Save the state immediately before simulation, after any parameter draws.
+    # A seed alone cannot replay rejected draws or fitted-parameter runs.
+    generation_state = deepcopy(rng.bit_generator.state)
     choice, stim, is_ct, _ = kernel.simulate_arrays(
         spec, spec.theta(values), template.stim, template.new_session, reset, env, max_ct, rng)
     if env == "replay":
         is_ct = template.is_ct.copy()
     return Trials(f"sim:{template.mouse}", stim, choice, (choice == stim).astype(np.int64),
-                  template.session.copy(), is_ct, "simulated")
+                  template.session.copy(), is_ct, "simulated",
+                  {"generation_state": generation_state,
+                   "template_signature": trial_signature(template, np.ones(template.n))})
 
 
 def prepare_synthetic(sim, cfg):
@@ -94,14 +102,94 @@ def run_model_recovery(ctx, unit):
         warm = [warm_start_from(spec, fits[p]["params"])
                 for p in parents(spec, ctx.models) if p in fits]
         fits[name] = fit_mle(spec, trials, lik, reset, cfg["fit"],
-                             unit["seed"] + 1 + candidates.index(name), warm)
+                             unit["seed"] + 1 + candidates.index(name), warm,
+                             record_starts=True)
+        # Keep start diagnostics compact. Selected parameters are sufficient to
+        # replay the reported score; all-start parameter replay is a CV feature.
+        for start in fits[name]["start_records"]:
+            start.pop("initial_theta")
+            start.pop("theta")
         fits[name]["bic"] = float(2 * fits[name]["nll"] + spec.k * np.log(fits[name]["n_lik"]))
     ranked = sorted(fits, key=lambda m: fits[m]["bic"])
     return {
+        "audit_version": 1, "code_version": ctx.code_version,
+        "environment": environment_record(), "simulation": sim.meta,
+        "input_signature": trial_signature(trials, lik),
+        "n_trials": trials.n, "n_lik": float(lik.sum()),
         "generating": gen.name, "true": values, "nll_true": float(nll_true),
         "accuracy": acc, "tries": tries, "winner": ranked[0],
         "delta_bic_runner_up": fits[ranked[1]]["bic"] - fits[ranked[0]]["bic"]
         if len(ranked) > 1 else None,
-        "candidates": {m: {"nll": f["nll"], "bic": f["bic"], "k": f["k"], "params": f["params"],
-                           "at_bound": f["at_bound"]} for m, f in fits.items()},
+        "candidates": fits,
     }
+
+
+def audit_model_recovery(ctx, unit, result, atol=1e-6):
+    """Replay one simulation and all selected candidate scores, without fitting.
+
+    Score reproducibility, convergence, and optimisation checks are separate.
+    A finite, reproducible likelihood does not imply a successful optimisation.
+    """
+    report = {"verified": False, "all_converged": False, "optimizer_miss": False,
+              "nested_violations": [], "max_score_error": None, "error": ""}
+    try:
+        if result.get("audit_version") != 1:
+            raise ValueError("Legacy recovery record has no replay/convergence audit")
+        if result["code_version"] != ctx.code_version:
+            raise ValueError("Recovery scientific code version differs from this checkout")
+        cfg = unit["cfg"]
+        gen = ctx.models[unit["model"]]
+        if result["generating"] != gen.name:
+            raise ValueError("Generating model differs from plan")
+        template = template_trials(unit["template"], cfg)
+        if trial_signature(template, np.ones(template.n)) != result["simulation"]["template_signature"]:
+            raise ValueError("Template data or preprocessing changed")
+        rng = np.random.default_rng()
+        rng.bit_generator.state = result["simulation"]["generation_state"]
+        reset = reset_flags(cfg["model"]["session_reset"])
+        sim = simulate_trials(gen, result["true"], template, cfg["validate"]["env"],
+                              cfg["validate"]["max_ct"], reset, rng)
+        trials, lik = prepare_synthetic(sim, cfg)
+        if trial_signature(trials, lik) != result["input_signature"]:
+            raise ValueError("Simulated trials do not reproduce the saved input signature")
+        if trials.n != result["n_trials"] or float(lik.sum()) != result["n_lik"]:
+            raise ValueError("Trial counts differ from saved record")
+        fits = result["candidates"]
+        if set(fits) != set(unit["candidates"]):
+            raise ValueError("Candidate set differs from plan")
+        true_nll = float(kernel.nll(gen, gen.theta(result["true"]), trials, lik, reset))
+        errors = [abs(true_nll - result["nll_true"])]
+        for name, fit in fits.items():
+            spec = ctx.models[name]
+            if set(fit["params"]) != set(spec.free):
+                raise ValueError(f"{name}: parameter names differ from model specification")
+            for p in spec.free_specs:
+                value = fit["params"][p.name]
+                if not np.isfinite(value) or not p.lower - 1e-10 <= value <= p.upper + 1e-10:
+                    raise ValueError(f"{name}: {p.name} is outside its parameter bounds")
+            score = float(kernel.nll(spec, spec.theta(fit["params"]), trials, lik, reset))
+            bic = 2 * score + spec.k * np.log(lik.sum())
+            if fit["k"] != spec.k or fit["n_lik"] != float(lik.sum()):
+                raise ValueError(f"{name}: parameter or likelihood count mismatch")
+            errors += [abs(score - fit["nll"]), abs(bic - fit["bic"])]
+            for parent in parents(spec, ctx.models):
+                if parent in fits and fit["nll"] > fits[parent]["nll"] + 1e-4:
+                    report["nested_violations"].append({"child": name, "parent": parent,
+                        "excess_nll": fit["nll"] - fits[parent]["nll"]})
+        report["max_score_error"] = float(max(errors))
+        if not np.all(np.isfinite(errors)) or max(errors) > atol:
+            raise ValueError("Saved NLL or BIC does not reproduce within tolerance")
+        ranked = sorted(fits, key=lambda name: fits[name]["bic"])
+        if result["winner"] != ranked[0]:
+            raise ValueError("Saved BIC winner differs from candidate scores")
+        if len(ranked) > 1 and abs(result["delta_bic_runner_up"] -
+                (fits[ranked[1]]["bic"] - fits[ranked[0]]["bic"])) > atol:
+            raise ValueError("Saved BIC margin differs from candidate scores")
+        report["all_converged"] = all(f["success"] for f in fits.values())
+        report["optimizer_miss"] = bool(fits[gen.name]["nll"] > true_nll + 1e-4)
+        report["verified"] = True
+    except (KeyError, TypeError, ValueError) as exc:
+        report["error"] = str(exc)
+    report["passed"] = bool(report["verified"] and report["all_converged"]
+                            and not report["optimizer_miss"] and not report["nested_violations"])
+    return report

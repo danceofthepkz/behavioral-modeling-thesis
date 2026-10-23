@@ -1,0 +1,10 @@
+about: >
+  Parameter recovery for feedback models without accuracy-based rejection.
+  Report zero-weight and weak-signal degeneracies instead of selecting them out.
+task: param_recovery
+models: feedback
+datasets: [paper19]
+overrides:
+  validate.n_reps: 100
+  validate.param_source: prior
+  validate.accuracy_range: [0.0, 1.0]

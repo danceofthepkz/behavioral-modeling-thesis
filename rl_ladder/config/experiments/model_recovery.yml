@@ -1,5 +1,5 @@
 about: >
-  Simulate each core model with each mouse's fitted parameters and fit all ten
+  Simulate each core model with each mouse's fitted parameters and fit all sixteen
   candidates. Run core_ladder first so that the generating fits are cached.
 task: model_recovery
 models: core

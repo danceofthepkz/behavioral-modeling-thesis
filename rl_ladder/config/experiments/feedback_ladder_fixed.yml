@@ -1,0 +1,5 @@
+_include: feedback_ladder
+about: C/F comparison with the S inverse temperature fixed at 5.
+models: feedback_fixed
+overrides:
+  collect.contrasts: [[S+Ff, S0f], [S+F+Cf, S+Cf], [A+F, A0], [A+F+C, A+C], [B+F, B0], [B+F+C, B+C]]

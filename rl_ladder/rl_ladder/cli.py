@@ -6,6 +6,7 @@
     unit PLAN INDEX [--chunk-size K]                    run one Slurm array index
     count PLAN [--chunk-size K]                         number of array indices
     collect PLAN|NAME [--allow-partial] [--no-plots]    summary tables
+    verify-cv PLAN|NAME                               replay saved scores, no fitting
     figures [--fit-run R] [--recovery-run R] [--n-sims N]  summary figures
     list [models|sets|datasets|experiments|params]
     show MODEL                                          free parameters of one model
@@ -46,9 +47,9 @@ def _parser():
         sp.add_argument("--no-collect", action="store_true")
 
     r = sub.add_parser("run", help="ad-hoc: one model (or set) on one dataset (or mouse)")
-    r.add_argument("model", help="model, comma list, or set (e.g. A+R, A0,A+R, core)")
+    r.add_argument("model", help="model, comma list, or set (e.g. B0, S+F+C, feedback)")
     r.add_argument("dataset", help="dataset preset, mouse ID, or comma list (e.g. paper19, GS027)")
-    r.add_argument("--task", default="fit", choices=["fit", "ppc", "param_recovery",
+    r.add_argument("--task", default="fit", choices=["fit", "cv", "ppc", "param_recovery",
                                                      "model_recovery"])
     r.add_argument("--name", help="run name (default derived from the arguments)")
     execution(r)
@@ -76,6 +77,12 @@ def _parser():
     co.add_argument("plan", help="plan.json path or run name")
     co.add_argument("--allow-partial", action="store_true")
     co.add_argument("--no-plots", action="store_true")
+
+    vc = sub.add_parser("verify-cv", help="recalculate archived CV scores without refitting")
+    vc.add_argument("plan", help="plan.json path or run name")
+
+    vr = sub.add_parser("verify-recovery", help="replay simulations, scores and convergence checks")
+    vr.add_argument("plan", help="plan.json path or run name")
 
     fg = sub.add_parser("figures", help="summary figures for a finished fit run")
     fg.add_argument("--fit-run", default="core_ladder")
@@ -162,6 +169,14 @@ def main(argv=None):
         return collect(_plan_path(args.plan, overrides), allow_partial=args.allow_partial,
                        plots=not args.no_plots)
 
+    if args.command == "verify-cv":
+        from .audit_cv import verify_plan
+        return verify_plan(_plan_path(args.plan, overrides))
+
+    if args.command == "verify-recovery":
+        from .collect import verify_recovery_plan
+        return verify_recovery_plan(_plan_path(args.plan, overrides))
+
     if args.command == "figures":
         from .figures import make_figures
         make_figures(args.fit_run, args.variant, args.recovery_run, args.dataset, args.groups,
@@ -182,9 +197,9 @@ def _list(what):
     from .service import context
     ctx = context()
     if what == "models":
-        print(f"{'model':8s} {'stimulus':9s} {'action':7s} {'choice':7s} k  free parameters")
+        print(f"{'model':10s} {'stimulus':9s} {'action':7s} {'choice':7s} {'feedback':8s} k  free parameters")
         for m in ctx.models.values():
-            print(f"{m.name:8s} {m.stimulus:9s} {m.action:7s} {m.choice:7s} {m.k}  "
+            print(f"{m.name:10s} {m.stimulus:9s} {m.action:7s} {m.choice:7s} {m.feedback:8s} {m.k}  "
                   f"{', '.join(m.free)}")
     elif what == "sets":
         for k, v in ctx.sets.items():
@@ -204,15 +219,20 @@ def _list(what):
 
 
 def _show(model):
-    from .models.registry import parents
+    from .models.registry import parents, resolve_models
     from .service import context
     ctx = context()
-    if model not in ctx.models:
+    try:
+        resolved = resolve_models(model, ctx.models, ctx.sets)
+    except KeyError:
         print(f"Unknown model {model!r}; try `list models`")
         return 1
-    m = ctx.models[model]
+    if len(resolved) != 1:
+        print("show expects one model; use `list models` for model sets")
+        return 1
+    m = ctx.models[resolved[0]]
     print(f"{m.name}: {m.about}")
-    print(f"  slots: stimulus={m.stimulus} action={m.action} choice={m.choice}")
+    print(f"  slots: stimulus={m.stimulus} action={m.action} choice={m.choice} feedback={m.feedback}")
     print(f"  free ({m.k}): {', '.join(m.free)}")
     if m.fixed:
         print(f"  fixed: {m.fixed}")

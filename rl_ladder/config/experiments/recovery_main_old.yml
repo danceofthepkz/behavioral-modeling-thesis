@@ -1,0 +1,7 @@
+_include: main_model_recovery
+about: >
+  Prior-based BIC model recovery for all 18 primary models and both reset
+  policies. Three synthetic replicates per old-mouse session template.
+overrides:
+  validate.n_reps: 57
+  collect.require_fit_success: true

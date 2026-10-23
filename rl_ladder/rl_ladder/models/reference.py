@@ -56,7 +56,7 @@ class StimulusA:
 
     logit = tau * (m + 2b) with m = Q(H) on High trials and -Q(L) on Low trials.
     The bias is part of this term, so a model using it has no separate Bias.
-    gamma > 0 is the paper's "choice-history" coupling (the R slot for A).
+    gamma > 0 is the original paper's choice-history coupling, now the B base.
     """
 
     def __init__(self, alpha, q0, b, tau=5.0, gamma=0.0):
@@ -117,6 +117,29 @@ class ChoiceKernel:
         self.k = (1 - self.alpha_c) * self.k + self.alpha_c * (1.0 if c == 1 else -1.0)
 
 
+class FeedbackHistory:
+    """Paper's R in weighted coordinates: R += alpha_f * (beta_f * C * F - R).
+
+    Unlike the fast kernel's normalized history h, this reference stores the
+    weighted decision variable directly, matching the published equation.
+    """
+
+    def __init__(self, alpha_f, beta_f):
+        self.alpha_f, self.beta_f = alpha_f, beta_f
+
+    def reset(self):
+        self.drive = 0.0
+
+    def term(self, s):
+        return self.drive
+
+    def update(self, s, c, r):
+        choice_sign = 2 * c - 1
+        feedback_sign = 2 * r - 1
+        target = self.beta_f * choice_sign * feedback_sign
+        self.drive += self.alpha_f * (target - self.drive)
+
+
 def build_modules(spec, values):
     """values: {param: value} for every parameter the spec uses (free or fixed)."""
     v = dict(values)
@@ -127,10 +150,10 @@ def build_modules(spec, values):
     if spec.stimulus in ("S", "S_cf"):
         mods["stimulus"] = StimulusS(v["alpha"], v["beta_q"], v["q0"],
                                      kappa=1.0 if spec.stimulus == "S_cf" else 0.0)
-    elif spec.stimulus == "A":
+    elif spec.stimulus in ("A", "B"):
         mods["stimulus"] = StimulusA(v["alpha"], v["q0"], v["b"], tau=v.get("tau_a", 5.0),
-                                     gamma=v["gamma"] if spec.action == "gamma" else 0.0)
-    if spec.stimulus != "A":
+                                     gamma=v["gamma"] if spec.stimulus == "B" else 0.0)
+    if spec.stimulus not in ("A", "B"):
         mods["bias"] = Bias(v["b"])
     if spec.action == "V":
         mods["action"] = ActionValue(v["alpha_v"], v["beta_v"])
@@ -138,6 +161,8 @@ def build_modules(spec, values):
         mods["wsls"] = WSLS(v["eps"])
     if spec.choice == "ck":
         mods["choice"] = ChoiceKernel(v["alpha_c"], v["beta_c"])
+    if spec.feedback == "cf":
+        mods["feedback"] = FeedbackHistory(v["alpha_f"], v["beta_f"])
     return mods
 
 

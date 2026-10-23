@@ -1,0 +1,14 @@
+about: >
+  Compare none, C, F, and F+C on S, A, and B bases. F resets each session;
+  C carries over as in the original ladder. Fixed-temperature S is a
+  separate sensitivity variant. F equals stimulus history in this dataset.
+task: fit
+models: feedback
+datasets: [paper19]
+overrides:
+  collect.contrasts: [[S+F, S0], [S+F+C, S+C], [A+F, A0], [A+F+C, A+C], [B+F, B0], [B+F+C, B+C]]
+  collect.groups: paper_clusters
+grid:
+  model.session_reset:
+    - [wsls, feedback]
+    - [wsls, choice, feedback]

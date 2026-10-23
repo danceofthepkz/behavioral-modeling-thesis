@@ -1,0 +1,11 @@
+about: >
+  Model recovery for the 12 feedback-ladder models, using prior draws.
+  Use the same session-reset policy as feedback_ladder. This does not require
+  cached empirical fits. F is stimulus history under deterministic feedback.
+task: model_recovery
+models: feedback
+datasets: [paper19]
+overrides:
+  validate.n_reps: 50
+  validate.param_source: prior
+  validate.accuracy_range: [0.0, 1.0]

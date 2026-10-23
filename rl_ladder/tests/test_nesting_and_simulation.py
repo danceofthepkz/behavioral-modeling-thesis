@@ -24,7 +24,7 @@ def test_switched_off_modules_are_exactly_nested(trials):
                         ("S+R+C", {"alpha_v": 0.3, "beta_v": 0.0, "alpha_c": 0.3, "beta_c": 0.0})):
         assert _nll(name, {**S_VALUES, **extra}, trials) == s0
     a0 = _nll("A0", A_VALUES, trials)
-    assert _nll("A+R", {**A_VALUES, "gamma": 0.0}, trials) == a0
+    assert _nll("B0", {**A_VALUES, "gamma": 0.0}, trials) == a0
     assert _nll("A+C", {**A_VALUES, "alpha_c": 0.2, "beta_c": 0.0}, trials) == a0
     assert _nll("A0T", {**A_VALUES, "tau_a": 5.0}, trials) == a0
 
@@ -36,7 +36,7 @@ def test_wsls_eps_one_is_chance(trials):
 def test_gamma_one_ignores_the_stimulus(trials):
     """gamma = 1 keeps Q(H) + Q(L) = 0: given the history, P(High) on trial t does
     not depend on that trial's stimulus (the model becomes a pure bandit)."""
-    spec = M["A+R"]
+    spec = M["B0"]
     theta = spec.theta({**A_VALUES, "alpha": 0.2, "gamma": 1.0})
     _, p, _ = kernel.score(spec, theta, trials, np.ones(trials.n), reset_flags([]))
     for t in (0, 5, 50, 199, trials.n - 1):
@@ -58,7 +58,7 @@ def test_simulated_probabilities_match_scoring(trials):
     rng = np.random.default_rng(1)
     for name, values in (("S+R+C", {**S_VALUES, "alpha_v": 0.2, "beta_v": 1.5, "alpha_c": 0.3,
                                     "beta_c": 0.8}),
-                         ("A+R+C", {**A_VALUES, "gamma": 0.5, "alpha_c": 0.2, "beta_c": -0.5}),
+                         ("B+C", {**A_VALUES, "gamma": 0.5, "alpha_c": 0.2, "beta_c": -0.5}),
                          ("M2", {"eps": 0.3})):
         spec = M[name]
         for env in ("replay", "reactive"):

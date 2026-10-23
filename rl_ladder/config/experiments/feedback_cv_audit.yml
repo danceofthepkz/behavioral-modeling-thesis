@@ -1,0 +1,21 @@
+_include: feedback_ladder
+about: >
+  Training-only chronological CV with saved parameters, start diagnostics,
+  numerical environment and automatic score verification. Full-data fits
+  from feedback_ladder_v020_cv stay in their original run and are not refitted.
+task: cv
+overrides:
+  evaluate.cv.method: chrono
+  collect.contrasts:
+    - [S+C, S0]
+    - [A+C, A0]
+    - [B+C, B0]
+    - [S+F, S0]
+    - [A+F, A0]
+    - [B+F, B0]
+    - [S+F+C, S+F]
+    - [A+F+C, A+F]
+    - [B+F+C, B+F]
+    - [S+F+C, S+C]
+    - [A+F+C, A+C]
+    - [B+F+C, B+C]

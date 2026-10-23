@@ -2,7 +2,7 @@ about: >
   Posterior predictive checks: learning curves and bias feedback for the models
   at the centre of the R-versus-C question.
 task: ppc
-models: [S0, S+R, S+C, A0, A+R, A+C]
+models: [S0, S+R, S+C, A0, B0, A+C]
 datasets: [paper19]
 overrides:
   ppc.n_sims: 50

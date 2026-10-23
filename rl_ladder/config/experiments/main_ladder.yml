@@ -1,0 +1,41 @@
+_include: reward_ladder
+about: >
+  Primary comparison: M1/M2, eight S models, four A models and four B models.
+  Full-data MLE and recorded chronological CV use identical data and settings.
+  Supplementary models are excluded. Two reset policies are reported separately.
+models: core
+overrides:
+  collect.contrasts:
+    # Independent R, holding C and F constant.
+    - [S+R, S0]
+    - [S+R+C, S+C]
+    - [S+R+F, S+F]
+    - [S+R+F+C, S+F+C]
+    # C, holding the other modules constant.
+    - [S+C, S0]
+    - [S+R+C, S+R]
+    - [S+F+C, S+F]
+    - [S+R+F+C, S+R+F]
+    - [A+C, A0]
+    - [A+F+C, A+F]
+    - [B+C, B0]
+    - [B+F+C, B+F]
+    # F, holding the other modules constant.
+    - [S+F, S0]
+    - [S+F+C, S+C]
+    - [S+R+F, S+R]
+    - [S+R+F+C, S+R+C]
+    - [A+F, A0]
+    - [A+F+C, A+C]
+    - [B+F, B0]
+    - [B+F+C, B+C]
+    # Learning bases and baseline controls.
+    - [B0, A0]
+    - [S0, A0]
+    - [S0, M1]
+    - [A0, M1]
+    - [B0, M1]
+    - [S0, M2]
+    - [A0, M2]
+    - [B0, M2]
+    - [M2, M1]

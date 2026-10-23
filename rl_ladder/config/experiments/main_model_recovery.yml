@@ -1,0 +1,7 @@
+_include: feedback_recovery
+about: Recovery among the 18 primary models, with both main-experiment reset policies.
+models: core
+grid:
+  model.session_reset:
+    - [wsls, feedback]
+    - [wsls, choice, feedback]

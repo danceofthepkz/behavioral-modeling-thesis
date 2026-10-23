@@ -1,0 +1,3 @@
+_include: feedback_param_recovery
+about: Parameter recovery for the four R-containing combinations, without accuracy rejection.
+models: reward_extension

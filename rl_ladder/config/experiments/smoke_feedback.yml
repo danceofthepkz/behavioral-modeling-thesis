@@ -1,0 +1,7 @@
+about: Installation check for B naming and independent V, C, and F modules.
+task: fit
+models: [S+F, S+F+C, A+F, B0, B+F+C, S+R+F+C, F+C]
+datasets: [GS029]
+overrides:
+  fit.n_starts: 3
+  preprocess.window: {method: first_sessions, n: 3}

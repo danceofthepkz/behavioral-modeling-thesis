@@ -4,11 +4,12 @@ task: fit
 models: core
 datasets: [paper19]
 overrides:
-  collect.contrasts: [[S+R, S+C], [A+R, A+C]]
+  collect.contrasts: [[S+R, S+C], [B0, A0], [S+F+C, S+C], [B+F+C, B+C]]
   collect.groups: paper_clusters
 grid:
   preprocess.correction: [mask, include]
   model.session_reset:
     - [wsls]
-    - [wsls, choice]
-    - [wsls, stimulus, action, choice]
+    - [wsls, feedback]
+    - [wsls, choice, feedback]
+    - [wsls, stimulus, action, choice, feedback]

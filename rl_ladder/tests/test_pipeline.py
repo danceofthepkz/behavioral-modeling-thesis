@@ -35,10 +35,10 @@ SMALL = {"fit.n_starts": 2, "validate.n_reps": 2, "ppc.n_sims": 3, "ppc.block": 
          "validate.accuracy_range": [0.0, 1.0]}
 
 
-@pytest.mark.parametrize("task,models", [("fit", "M1,S0,S+C,A0,A+R"),
-                                         ("param_recovery", "S0"),
-                                         ("model_recovery", "M1,S0,S+C"),
-                                         ("ppc", "S0")])
+@pytest.mark.parametrize("task,models", [("fit", "M1,S0,S+C,A0,B0,S+R+F+C,B+F+C"),
+                                         ("param_recovery", "S+Ff"),
+                                         ("model_recovery", "M1,C,F,F+C"),
+                                         ("ppc", "S+F+C")])
 def test_task_end_to_end(env, task, models):
     exp = {"task": task, "models": models, "datasets": ["SYN1,SYN2"],
            "overrides": {"collect.contrasts": [["S+C", "S0"]]} if task == "fit" else {}}
@@ -59,3 +59,23 @@ def test_children_never_worse_than_parents(env):
         fit = get_or_fit(context(), unit["model"], unit["mouse"], unit["cfg"])
         for parent, nll in fit["parent_nll"].items():
             assert fit["nll"] <= nll + 1e-6, (unit["model"], parent)
+
+
+def test_old_plan_cannot_resume_with_new_scientific_code(env):
+    from rl_ladder.tasks import run_unit
+    _, plan = make_plan({"task": "fit", "models": "M1", "datasets": ["SYN1"]}, SMALL,
+                        name="old_code")
+    plan["code_version"] = "previous-version"
+    with pytest.raises(ValueError, match="different code version"):
+        run_unit(plan, 0)
+
+
+def test_old_run_manifest_is_not_overwritten(env):
+    from rl_ladder.service import atomic_write_json, read_json
+    exp = {"task": "fit", "models": "M1", "datasets": ["SYN1"]}
+    path, plan = make_plan(exp, SMALL, name="keep_archive")
+    plan["code_version"] = "previous-version"
+    atomic_write_json(path, plan)
+    with pytest.raises(ValueError, match="preserve archived results"):
+        make_plan(exp, SMALL, name="keep_archive")
+    assert read_json(path)["code_version"] == "previous-version"

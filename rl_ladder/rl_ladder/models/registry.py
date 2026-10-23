@@ -1,8 +1,9 @@
-"""Model registry: a model is a choice of variant for each of three slots.
+"""Model registry: a model is a choice of variant for each of four slots.
 
-    stimulus: none | S | S_cf | A        stimulus-specific value learning
-    action:   none | V | gamma | wsls    reward-dependent, stimulus-independent
+    stimulus: none | S | S_cf | A | B    value-learning base; B includes coupling
+    action:   none | V | wsls           action values or one-trial WSLS
     choice:   none | ck                  reward-independent repetition
+    feedback: none | cf                  exponentially filtered choice x feedback
 
 The bias b is always free unless a model fixes it. Models are declared in
 config/models.yml; this module turns each entry into a ModelSpec, derives its
@@ -10,20 +11,29 @@ free parameters, and rejects combinations the kernel cannot express.
 """
 
 from dataclasses import dataclass, field
+import warnings
 
 import numpy as np
 
 from . import params as P
 
-SLOTS = ("stimulus", "action", "choice")
+SLOTS = ("stimulus", "action", "choice", "feedback")
 SLOT_PARAMS = {
     "stimulus": {"none": (), "S": ("alpha", "beta_q", "q0"),
-                 "S_cf": ("alpha", "beta_q", "q0"), "A": ("alpha", "q0")},
-    "action": {"none": (), "V": ("alpha_v", "beta_v"), "gamma": ("gamma",), "wsls": ("eps",)},
+                 "S_cf": ("alpha", "beta_q", "q0"), "A": ("alpha", "q0"),
+                 "B": ("alpha", "q0", "gamma")},
+    "action": {"none": (), "V": ("alpha_v", "beta_v"), "wsls": ("eps",)},
     "choice": {"none": (), "ck": ("alpha_c", "beta_c")},
+    "feedback": {"none": (), "cf": ("alpha_f", "beta_f")},
 }
-BASE_CODE = {"none": 0, "S": 1, "S_cf": 1, "A": 2}
-RESETTABLE = ("stimulus", "action", "choice", "wsls")
+BASE_CODE = {"none": 0, "S": 1, "S_cf": 1, "A": 2, "B": 2}
+RESETTABLE = ("stimulus", "action", "choice", "wsls", "feedback")
+MODEL_ALIASES = {"A+R": "B0", "A+R+C": "B+C"}
+
+
+def canonical_name(name):
+    """Read historical labels without changing any archived files."""
+    return MODEL_ALIASES.get(name, name)
 
 
 @dataclass(frozen=True)
@@ -32,6 +42,7 @@ class ModelSpec:
     stimulus: str
     action: str
     choice: str
+    feedback: str
     free: tuple
     fixed: dict = field(default_factory=dict)
     about: str = ""
@@ -54,7 +65,7 @@ class ModelSpec:
 
     @property
     def depth(self):
-        return sum(getattr(self, s) != "none" for s in SLOTS)
+        return sum(getattr(self, s) != "none" for s in SLOTS) + int(self.stimulus == "B")
 
     def template(self):
         """Theta with every non-free parameter at its neutral or fixed value."""
@@ -74,7 +85,7 @@ class ModelSpec:
 
     def to_dict(self):
         return {"name": self.name, "stimulus": self.stimulus, "action": self.action,
-                "choice": self.choice, "free": list(self.free),
+                "choice": self.choice, "feedback": self.feedback, "free": list(self.free),
                 "fixed": dict(sorted(self.fixed.items())), "k": self.k}
 
 
@@ -84,8 +95,6 @@ def make_spec(name, entry):
         if variant not in SLOT_PARAMS[slot]:
             raise ValueError(f"{name}: unknown {slot} variant {variant!r}; "
                              f"choose from {sorted(SLOT_PARAMS[slot])}")
-    if slots["action"] == "gamma" and slots["stimulus"] != "A":
-        raise ValueError(f"{name}: action 'gamma' modifies the A update and needs stimulus: A")
     fixed = {k: float(v) for k, v in (entry.get("fixed") or {}).items()}
     extra = list(entry.get("free") or [])
     for n in list(fixed) + extra:
@@ -110,13 +119,18 @@ def build_registry(models_yaml):
 
 
 def resolve_models(arg, models, sets):
-    """'core' -> set members; 'A0,A+R' -> list; 'S+C' -> [S+C]."""
+    """Expand model sets and map historical CLI labels to canonical names."""
     names = []
     for token in ([arg] if isinstance(arg, str) else list(arg)):
         for part in str(token).split(","):
             part = part.strip()
             if not part:
                 continue
+            renamed = canonical_name(part)
+            if renamed != part:
+                warnings.warn(f"Model {part!r} is now named {renamed!r}; using {renamed!r}.",
+                              FutureWarning, stacklevel=2)
+                part = renamed
             if part in sets:
                 names.extend(sets[part])
             elif part in models:
@@ -136,10 +150,14 @@ def parents(spec, models):
     """
     out = []
     for other in models.values():
-        if other.name == spec.name or other.stimulus != spec.stimulus or other.fixed != spec.fixed:
+        if other.name == spec.name or other.fixed != spec.fixed:
             continue
         diff = [s for s in SLOTS if getattr(other, s) != getattr(spec, s)]
-        if len(diff) == 1 and getattr(other, diff[0]) == "none" and set(other.free) < set(spec.free):
+        # B reduces to A at gamma = 0; coupling belongs to the base, not an
+        # additive action term. Other parent edges switch off one history slot.
+        base_parent = diff == ["stimulus"] and other.stimulus == "A" and spec.stimulus == "B"
+        slot_parent = len(diff) == 1 and diff[0] != "stimulus" and getattr(other, diff[0]) == "none"
+        if (base_parent or slot_parent) and set(other.free) < set(spec.free):
             out.append(other.name)
     return sorted(out)
 

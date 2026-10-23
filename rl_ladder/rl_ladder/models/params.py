@@ -1,7 +1,7 @@
 """Fixed parameter-vector layout shared by every model.
 
 A model never owns its own parameter vector. Every model writes into the same
-12-slot ``theta``; parameters a model does not use stay at their *neutral*
+14-slot ``theta``; parameters a model does not use stay at their *neutral*
 value, which switches the corresponding term off exactly (e.g. beta_c = 0
 removes the choice kernel from the logit). This is what makes the ladder
 nested by construction.
@@ -13,7 +13,9 @@ import numpy as np
 
 # Slot indices (also imported by the numba kernel as compile-time constants).
 ALPHA, BETA_Q, B, Q0, GAMMA, ALPHA_V, BETA_V, ALPHA_C, BETA_C, EPS, TAU_A, KAPPA = range(12)
-N_THETA = 12
+# Append new slots so the indices of all original parameters remain unchanged.
+ALPHA_F, BETA_F = 12, 13
+N_THETA = 14
 
 
 @dataclass(frozen=True)
@@ -25,7 +27,7 @@ class ParamSpec:
     upper: float
     neutral: float  # value when the owning module is off
     prior: tuple  # (distribution, low, high) for random starts and recovery
-    prior_a: tuple | None  # override when the stimulus slot is the original A model
+    prior_a: tuple | None  # override for the original A/B model family
     about: str
 
 
@@ -44,7 +46,7 @@ PARAMS = (
               "initial value asymmetry"),
     ParamSpec("gamma", GAMMA, "linear", 0.0, 1.0, 0.0,
               ("uniform", 0.0, 1.0), None,
-              "A only: unchosen Q -= gamma*alpha*delta (paper's exp(-beta))"),
+              "B base: unchosen Q -= gamma*alpha*delta (paper's exp(-beta))"),
     ParamSpec("alpha_v", ALPHA_V, "log", 1e-6, 1.0, 0.1,
               ("loguniform", 1e-3, 1e-1), None,
               "action-value learning rate"),
@@ -62,10 +64,16 @@ PARAMS = (
               "WSLS noise: P(follow rule) = 1 - eps/2"),
     ParamSpec("tau_a", TAU_A, "linear", 0.1, 100.0, 5.0,
               ("loguniform", 1.0, 20.0), None,
-              "A only: inverse temperature (fixed at 5 in the paper)"),
+              "A/B bases: inverse temperature (fixed at 5 in the original paper)"),
     ParamSpec("kappa", KAPPA, "linear", 0.0, 1.0, 0.0,
               ("uniform", 0.0, 1.0), None,
               "S only: weight of the counterfactual update"),
+    ParamSpec("alpha_f", ALPHA_F, "log", 1e-6, 1.0, 0.1,
+              ("loguniform", 1e-3, 3e-1), None,
+              "choice-feedback history update rate"),
+    ParamSpec("beta_f", BETA_F, "linear", 0.0, 20.0, 0.0,
+              ("uniform", 0.0, 3.0), None,
+              "choice-feedback history magnitude (paper's lambda_r)"),
 )
 BY_NAME = {p.name: p for p in PARAMS}
 
@@ -75,7 +83,7 @@ def neutral_theta():
 
 
 def prior_of(spec, stimulus):
-    return spec.prior_a if (stimulus == "A" and spec.prior_a is not None) else spec.prior
+    return spec.prior_a if (stimulus in ("A", "B") and spec.prior_a is not None) else spec.prior
 
 
 def sample_prior(spec, stimulus, rng):

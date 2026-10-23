@@ -1,0 +1,3 @@
+_include: feedback_recovery
+about: Model recovery for all eight S-family R/C/F combinations, without accuracy rejection.
+models: S_extended

@@ -1,0 +1,5 @@
+_include: main_ladder
+about: All 18 primary models on GS029 under both reset policies; execution check only.
+datasets: [GS029]
+overrides:
+  fit.n_starts: 3

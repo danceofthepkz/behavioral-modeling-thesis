@@ -1,4 +1,4 @@
-"""Gate: the kernel reproduces the published A0/A+R likelihoods and the thesis
+"""Gate: the kernel reproduces the published A0/B0 likelihoods and the thesis
 M1/M2 baselines on the real data (skipped when the data are not available)."""
 
 import json
@@ -31,10 +31,10 @@ def test_published_a0_and_choice_history_likelihoods():
     targets = json.loads(path.read_text())
     assert len(targets) == 38
     for t in targets:
-        name = "A0" if "3param" in t["model"] else "A+R"
+        name = "A0" if "3param" in t["model"] else "B0"
         spec = context().models[name]
         values = {"alpha": t["alpha"], "b": t["bias"], "q0": t["init_q"]}
-        if name == "A+R":
+        if name == "B0":
             values["gamma"] = float(np.exp(-t["beta"])) if t["beta"] < 100 else 0.0
         trials, lik = preprocess(load_mouse(t["mouse"], cfg), cfg)
         nll = kernel.nll(spec, spec.theta(values), trials, lik, reset_flags([]))

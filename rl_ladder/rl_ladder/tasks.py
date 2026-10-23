@@ -7,6 +7,7 @@ resolved configuration. A unit is the smallest piece of work and is what one
 local worker or one Slurm array index runs:
 
     fit             (model, mouse)
+    cv              (model, mouse), training-only fit with archived CV parameters
     ppc             (model, mouse)
     param_recovery  (model, replicate)  template mouse = mice[rep % n_mice]
     model_recovery  (generating model, replicate)  fits every candidate
@@ -23,9 +24,9 @@ from .config import (apply_overrides, experiment_path, load_default, load_yaml, 
                      stable_hash)
 from .data import load_mouse, resolve_mice
 from .models.registry import reset_flags, resolve_models
-from .service import atomic_write_json, context, get_or_fit, read_json, seed_for
+from .service import atomic_write_json, context, get_cv, get_or_fit, read_json, seed_for
 
-TASKS = ("fit", "ppc", "param_recovery", "model_recovery")
+TASKS = ("fit", "cv", "ppc", "param_recovery", "model_recovery")
 
 
 def _label(value):
@@ -67,16 +68,18 @@ def expand(ctx, exp, cli_overrides, name):
             cfg = apply_overrides(cfg, grid_point)
             cfg = apply_overrides(cfg, cli_overrides)
             reset_flags(cfg["model"]["session_reset"])  # fail early on typos
+            if task == "cv" and cfg["evaluate"]["cv"]["method"] != "chrono":
+                raise ValueError("The cv task requires evaluate.cv.method=chrono")
             variant = _variant_name(dataset, grid_point)
             label = ", ".join([f"dataset={dataset}"] +
                               [f"{k.split('.')[-1]}={_label(v)}" for k, v in grid_point.items()])
             common = {"task": task, "variant": variant, "label": label, "cfg": cfg}
-            if task in ("fit", "ppc"):
+            if task in ("fit", "cv", "ppc"):
                 for model in models:
                     for mouse in mice:
                         units.append({**common, "id": f"{ctx.models[model].slug}__{mouse}",
                                       "model": model, "mouse": mouse,
-                                      "wave": ctx.models[model].depth})
+                                      "wave": 0 if task == "cv" else ctx.models[model].depth})
             else:
                 n_reps = int(cfg["validate"]["n_reps"])
                 for model in models:
@@ -88,7 +91,9 @@ def expand(ctx, exp, cli_overrides, name):
                             unit["candidates"] = models
                         units.append(unit)
     for u in units:
-        u["seed"] = seed_for(u["cfg"]["fit"]["seed"], name, u["variant"], u["task"], u["id"])
+        u["seed"] = (seed_for(u["cfg"]["fit"]["seed"], u["model"], u["mouse"]) + 7
+                     if task == "cv" else
+                     seed_for(u["cfg"]["fit"]["seed"], name, u["variant"], u["task"], u["id"]))
         u["key"] = stable_hash({k: v for k, v in u.items() if k != "key"} |
                                {"code": ctx.code_version}, n=16)
     units.sort(key=lambda u: u["wave"])  # nested models first, so warm starts hit the cache
@@ -108,7 +113,14 @@ def make_plan(experiment, cli_overrides=None, name=None, out=None):
             "code_version": ctx.code_version, "experiment": exp,
             "cli_overrides": cli_overrides or {}, "n_units": len(units), "units": units}
     path = Path(out) if out else run_dir(plan) / "plan.json"
+    manifest = run_dir(plan) / "plan.json"
+    for previous in {path, manifest}:
+        if previous.exists() and read_json(previous).get("code_version") != ctx.code_version:
+            raise ValueError("This run name already belongs to a different code version. "
+                             "Use --name-suffix with a new name to preserve archived results.")
     atomic_write_json(path, plan)
+    if path.resolve() != manifest.resolve():
+        atomic_write_json(manifest, plan)
     return path, plan
 
 
@@ -133,6 +145,9 @@ def run_unit(plan, index):
     from .validate import run_model_recovery, run_param_recovery
 
     ctx = context()
+    if plan["code_version"] != ctx.code_version:
+        raise ValueError("This plan was generated with a different code version. "
+                         "Create a new plan and run name; keep the old results as an archive.")
     unit = plan["units"][index]
     path = unit_output_path(plan, unit)
     key = runtime_key(unit)
@@ -142,6 +157,8 @@ def run_unit(plan, index):
     try:
         if unit["task"] == "fit":
             result = get_or_fit(ctx, unit["model"], unit["mouse"], unit["cfg"])
+        elif unit["task"] == "cv":
+            result = get_cv(ctx, unit["model"], unit["mouse"], unit["cfg"])
         elif unit["task"] == "ppc":
             result = run_ppc(ctx, unit)
         elif unit["task"] == "param_recovery":

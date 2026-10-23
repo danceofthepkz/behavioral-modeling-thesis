@@ -23,7 +23,7 @@ import pandas as pd
 from .config import apply_overrides, load_default, results_root
 from .data import load_mouse, resolve_mice
 from .models import kernel
-from .models.registry import reset_flags
+from .models.registry import canonical_name, reset_flags
 from .preprocess import preprocess
 from .service import context, read_json, seed_for
 
@@ -32,7 +32,14 @@ from .service import context, read_json, seed_for
 BLUE, ORANGE = "#2a78d6", "#eb6834"
 RAMP = ["#fcfcfb", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 INK, INK2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
-CORE = ["M1", "M2", "S0", "S+R", "S+C", "S+R+C", "A0", "A+R", "A+C", "A+R+C"]
+CORE = ["M1", "M2", "S0", "S+R", "S+C", "S+R+C", "A0", "B0", "A+C", "B+C",
+        "S+F", "S+F+C", "A+F", "A+F+C", "B+F", "B+F+C", "S+R+F", "S+R+F+C"]
+
+
+def model_order(names):
+    """Show every fitted model, including optional F and fixed-temperature variants."""
+    names = list(dict.fromkeys(names))
+    return [m for m in CORE if m in names] + [m for m in names if m not in CORE]
 
 
 def _plt():
@@ -71,7 +78,7 @@ def load_fit_run(fit_run, variant):
     fits = {}
     for f in sorted(unit_dir.glob("*.json")):
         o = read_json(f)
-        fits[(o["mouse"], o["model"])] = o["result"]
+        fits[(o["mouse"], canonical_name(o["model"]))] = o["result"]
     return fits
 
 
@@ -117,7 +124,8 @@ def fig_ranking(delta, path):
 # ---------------------------------------------------------------- figure 2
 def fig_confusion(counts, path):
     plt = _plt()
-    order = [m for m in CORE if m in counts.index]
+    counts = counts.rename(index=canonical_name, columns=canonical_name)
+    order = model_order(counts.index)
     counts = counts.reindex(index=order, columns=order, fill_value=0)
     frac = counts.div(counts.sum(axis=1), axis=0)
     fig, ax = plt.subplots(figsize=(6.4, 5.4))
@@ -145,7 +153,7 @@ def fig_confusion(counts, path):
 # ---------------------------------------------------------------- figure 3
 def fig_best_per_mouse(delta, order, group, path, cap=50):
     plt = _plt()
-    models = [m for m in CORE if m in delta.columns]
+    models = model_order(delta.columns)
     d = delta.loc[order, models]
     fig, ax = plt.subplots(figsize=(7.6, 0.32 * len(order) + 1.6))
     im = ax.imshow(np.minimum(d.to_numpy(), cap), cmap=_cmap(), vmin=0, vmax=cap, aspect="auto")
@@ -233,7 +241,8 @@ def fig_ppc_mouse(mouse, group, models, ppc, delta, path):
     plt = _plt()
     ncol = 5
     nrow = int(np.ceil(len(models) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(13, 2.6 * nrow + 0.6), sharex=True, sharey=True)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(13, 2.6 * nrow + 0.6), sharex=True,
+                             sharey=True, squeeze=False)
     for ax, model in zip(axes.ravel(), models):
         if (mouse, model) not in ppc:
             ax.set_visible(False)
@@ -252,6 +261,8 @@ def fig_ppc_mouse(mouse, group, models, ppc, delta, path):
                      fontweight="bold" if dv == 0 else "normal")
         ax.set_ylim(0, 1.02)
         ax.grid(axis="y")
+    for ax in axes.ravel()[len(models):]:
+        ax.set_visible(False)
     for ax in axes[-1]:
         ax.set_xlabel("session")
     for ax in axes[:, 0]:
@@ -272,7 +283,7 @@ def fig_ppc_mouse(mouse, group, models, ppc, delta, path):
 
 def fig_ppc_error(metrics, order, group, path):
     plt = _plt()
-    models = [m for m in CORE if m in set(metrics.model)]
+    models = model_order(dict.fromkeys(metrics.model))
     err = metrics.pivot(index="mouse", columns="model", values="mean_abs_error").loc[order, models]
     fig, ax = plt.subplots(figsize=(7.6, 0.32 * len(order) + 1.6))
     vmax = float(np.nanpercentile(err.to_numpy(), 95))
@@ -310,7 +321,7 @@ def make_figures(fit_run="core_ladder", variant=None, recovery_run="model_recove
     out = Path(out) if out else results_root(cfg) / "figures" / fit_run
     out.mkdir(parents=True, exist_ok=True)
     fits = load_fit_run(fit_dir, variant)
-    models = [m for m in CORE if any(k[1] == m for k in fits)]
+    models = model_order(dict.fromkeys(k[1] for k in fits))
     mice = [m for m in mice if any(k[0] == m for k in fits)]
     delta = delta_bic_table(fits, models)
     order, group = _groups(ctx, mice, groups)

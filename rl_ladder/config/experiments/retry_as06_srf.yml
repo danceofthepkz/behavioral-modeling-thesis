@@ -1,0 +1,11 @@
+_include: main_new_mice
+about: >
+  Targeted optimization diagnostic for AS06 S+R+F. Use 80 random starts,
+  preserve both original reset policies, and write to a new run folder.
+  This does not replace the original 180-output new-cohort experiment.
+models: [S+R+F]
+datasets: [AS06]
+overrides:
+  data.variant: current
+  fit.n_starts: 80
+  collect.contrasts: []

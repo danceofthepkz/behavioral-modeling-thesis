@@ -2,9 +2,9 @@
 
 One trial, for every model:
 
-    logit = [stimulus term] + [bias] + beta_v*(V_H - V_L) + beta_c*k + w*y_prev*(2r_prev - 1)
+    logit = [stimulus term] + [bias] + beta_v*(V_H - V_L) + beta_c*k + beta_f*h + w*y_prev*(2r_prev - 1)
     p     = sigmoid(logit) = P(choose High)
-    then update Q / V / k from the choice and reward.
+    then update Q / V / k / h from the choice and reward.
 
 Modules that a model does not use sit at neutral values (see params.py), so
 their term is exactly zero. The same loop scores observed choices (mode 0) and
@@ -22,10 +22,11 @@ Modes
 import numpy as np
 from numba import njit
 
-from .params import (ALPHA, ALPHA_C, ALPHA_V, B, BETA_C, BETA_Q, BETA_V, EPS, GAMMA,
+from .params import (ALPHA, ALPHA_C, ALPHA_F, ALPHA_V, B, BETA_C, BETA_F, BETA_Q, BETA_V, EPS, GAMMA,
                      KAPPA, Q0, TAU_A)
 
-N_TRACE = 4  # logit, stimulus term, action term (V + WSLS), choice term
+TRACE_COLUMNS = ("logit", "stimulus", "action", "choice", "feedback")
+N_TRACE = len(TRACE_COLUMNS)
 
 _EMPTY_F = np.empty(0, dtype=np.float64)
 _EMPTY_I = np.empty(0, dtype=np.int64)
@@ -52,6 +53,8 @@ def run_kernel(theta, base, reset, stim, choice, new_session, lik, mode,
     beta_v = theta[BETA_V]
     alpha_c = theta[ALPHA_C]
     beta_c = theta[BETA_C]
+    alpha_f = theta[ALPHA_F]
+    beta_f = theta[BETA_F]
     tau_a = theta[TAU_A]
     kappa = theta[KAPPA]
     eps = theta[EPS]
@@ -72,6 +75,7 @@ def run_kernel(theta, base, reset, stim, choice, new_session, lik, mode,
     v[0] = 0.5
     v[1] = 0.5
     k = 0.0
+    h = 0.0
     prev_y = 0.0
     prev_sign = 0.0
     ct_run = 0
@@ -97,6 +101,8 @@ def run_kernel(theta, base, reset, stim, choice, new_session, lik, mode,
             if reset[3]:
                 prev_y = 0.0
                 prev_sign = 0.0
+            if reset[4]:
+                h = 0.0
 
         if mode == 2:
             if t == 0 or new_session[t]:
@@ -126,7 +132,8 @@ def run_kernel(theta, base, reset, stim, choice, new_session, lik, mode,
             z = b
         action_term = beta_v * (v[1] - v[0]) + w * prev_y * prev_sign
         choice_term = beta_c * k
-        z += action_term + choice_term
+        feedback_term = beta_f * h
+        z += action_term + choice_term + feedback_term
 
         if z >= 0.0:
             p = 1.0 / (1.0 + np.exp(-z))
@@ -140,6 +147,7 @@ def run_kernel(theta, base, reset, stim, choice, new_session, lik, mode,
             trace[t, 1] = stim_term
             trace[t, 2] = action_term
             trace[t, 3] = choice_term
+            trace[t, 4] = feedback_term
 
         if mode == 0:
             c = choice[t]
@@ -161,8 +169,11 @@ def run_kernel(theta, base, reset, stim, choice, new_session, lik, mode,
         v[c] += alpha_v * (r - v[c])
         y = 1.0 if c == 1 else -1.0
         k = (1.0 - alpha_c) * k + alpha_c * y
+        # Use the completed trial only after computing its choice probability.
+        sign = 1.0 if r == 1 else -1.0
+        h = (1.0 - alpha_f) * h + alpha_f * y * sign
         prev_y = y
-        prev_sign = 1.0 if r == 1 else -1.0
+        prev_sign = sign
         if r == 1:
             ct_run = 0
         else:

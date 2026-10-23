@@ -1,0 +1,5 @@
+_include: reward_ladder
+about: All eight S-family combinations on one old mouse under both reset policies.
+datasets: [GS029]
+overrides:
+  fit.n_starts: 3

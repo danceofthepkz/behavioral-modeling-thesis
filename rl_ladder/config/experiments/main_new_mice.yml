@@ -1,0 +1,5 @@
+_include: main_ladder
+about: The same 18-model protocol on the five new mice, reported separately from paper19.
+datasets: [new5]
+overrides:
+  collect.groups: null

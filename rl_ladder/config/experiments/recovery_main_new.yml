@@ -1,0 +1,7 @@
+_include: recovery_main_old
+about: >
+  The same model-recovery protocol on the five new-mouse templates.
+  Five synthetic replicates per template; report separately from old mice.
+datasets: [new5]
+overrides:
+  validate.n_reps: 25

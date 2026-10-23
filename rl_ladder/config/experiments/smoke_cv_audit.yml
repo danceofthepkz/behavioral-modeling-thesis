@@ -1,0 +1,6 @@
+_include: feedback_cv_audit
+about: Small real-data check of complete CV records before submitting the 456-unit run.
+models: [A0, A+C, S+F]
+datasets: [GS029]
+overrides:
+  fit.n_starts: 3

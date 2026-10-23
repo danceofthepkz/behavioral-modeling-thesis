@@ -1,13 +1,13 @@
 about: >
   Gate 1. Refit the paper's two models with the paper's settings (every trial in
   the likelihood, no session resets). Expect NLL <= published NLL for each mouse,
-  and 5/8 drifting vs 0/9 stationary mice preferring A+R by BIC.
+  and 5/8 drifting vs 0/9 stationary mice preferring B0 by BIC.
 task: fit
 models: paper
 datasets: [paper19]
 overrides:
   preprocess.correction: include
   model.session_reset: []
-  collect.contrasts: [[A+R, A0]]
+  collect.contrasts: [[B0, A0]]
   collect.groups: paper_clusters
   collect.reference: legacy

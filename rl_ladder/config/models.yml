@@ -1,43 +1,59 @@
-# Every model fills three slots; the bias b is always free unless fixed.
-#   stimulus: none | S | S_cf | A     stimulus-specific value learning
-#   action:   none | V | gamma | wsls reward-dependent, stimulus-independent
-#   choice:   none | ck               reward-independent repetition (choice kernel)
-# Rules: gamma needs stimulus A. `fixed: {param: value}` pins a parameter,
-# `free: [param]` frees one that is normally fixed (see `python -m rl_ladder list params`).
-# Adding a model that only recombines existing variants needs no code change.
+# A model selects a value-learning base and independent history modules.
+# stimulus: none | S | S_cf | A | B; B includes the original gamma coupling.
+# action: none | V | wsls; choice: none | ck; feedback: none | cf.
+# F is filtered choice x feedback; C remains the reward-independent choice kernel.
+# `fixed: {param: value}` pins a parameter; `free: [param]` frees an extra one.
 
 models:
-  M1:      {stimulus: none, action: none,  choice: none, about: "random responding with bias"}
-  M2:      {stimulus: none, action: wsls,  choice: none, fixed: {b: 0.0}, about: "noisy win-stay/lose-shift"}
-  S0:      {stimulus: S,    action: none,  choice: none, about: "stimulus-specific RL"}
-  S+R:     {stimulus: S,    action: V,     choice: none, about: "S0 + reward-dependent action value"}
-  S+C:     {stimulus: S,    action: none,  choice: ck,   about: "S0 + choice kernel"}
-  S+R+C:   {stimulus: S,    action: V,     choice: ck,   about: "S0 + action value + choice kernel"}
-  A0:      {stimulus: A,    action: none,  choice: none, about: "paper's simple model (3 params)"}
-  A+R:     {stimulus: A,    action: gamma, choice: none, about: "paper's choice-history model (gamma = exp(-beta))"}
-  A+C:     {stimulus: A,    action: none,  choice: ck,   about: "A0 + choice kernel"}
-  A+R+C:   {stimulus: A,    action: gamma, choice: ck,   about: "A0 + gamma + choice kernel"}
+  M1:      {stimulus: none, about: "random responding with bias"}
+  M2:      {action: wsls, fixed: {b: 0.0}, about: "noisy win-stay/lose-shift"}
+  S0:      {stimulus: S, about: "stimulus-specific RL"}
+  S+R:     {stimulus: S, action: V, about: "S0 + reward-dependent action value V"}
+  S+C:     {stimulus: S, choice: ck, about: "S0 + choice kernel"}
+  S+R+C:   {stimulus: S, action: V, choice: ck, about: "S0 + action value V + choice kernel"}
+  A0:      {stimulus: A, about: "Collina simple model (3 parameters)"}
+  A+C:     {stimulus: A, choice: ck, about: "A0 + choice kernel"}
+  B0:      {stimulus: B, about: "Collina choice-history model; formerly A+R"}
+  B+C:     {stimulus: B, choice: ck, about: "B0 + choice kernel; formerly A+R+C"}
+  S+F:     {stimulus: S, feedback: cf, about: "S0 + choice-feedback history"}
+  S+F+C:   {stimulus: S, feedback: cf, choice: ck, about: "S0 + choice-feedback history + choice kernel"}
+  A+F:     {stimulus: A, feedback: cf, about: "A0 + choice-feedback history"}
+  A+F+C:   {stimulus: A, feedback: cf, choice: ck, about: "A0 + choice-feedback history + choice kernel"}
+  B+F:     {stimulus: B, feedback: cf, about: "B0 + choice-feedback history"}
+  B+F+C:   {stimulus: B, feedback: cf, choice: ck, about: "B0 + choice-feedback history + choice kernel"}
 
-  # Variants outside the core ladder
-  S0cf:    {stimulus: S_cf, action: none,  choice: none, about: "S0 + counterfactual update of the unchosen action"}
-  A0T:     {stimulus: A,    action: none,  choice: none, free: [tau_a], about: "A0 with free inverse temperature"}
-  V:       {stimulus: none, action: V,     choice: none, about: "stimulus-blind action value"}
-  C:       {stimulus: none, action: none,  choice: ck,   about: "choice kernel only"}
-  V+C:     {stimulus: none, action: V,     choice: ck,   about: "stimulus-blind action value + choice kernel"}
+  # Combined R/F models complete the S-family comparisons.
+  S+R+F:   {stimulus: S, action: V, feedback: cf, about: "S0 + action value V + choice-feedback history"}
+  S+R+F+C: {stimulus: S, action: V, feedback: cf, choice: ck, about: "S0 + V + F + C"}
+  S0cf:    {stimulus: S_cf, about: "S0 + counterfactual update of the unchosen action"}
+  A0T:     {stimulus: A, free: [tau_a], about: "A0 with free inverse temperature"}
+  V:       {action: V, about: "stimulus-blind action value"}
+  C:       {choice: ck, about: "choice kernel only"}
+  V+C:     {action: V, choice: ck, about: "stimulus-blind action value + choice kernel"}
+  F:       {feedback: cf, about: "choice-feedback history only"}
+  F+C:     {feedback: cf, choice: ck, about: "PR decision rule (bias + F + C); no current stimulus"}
 
-  # S family with the inverse temperature fixed at 5, as the paper fixes it for A.
-  # On the mouse data a free beta_q is not identifiable: mice learn slowly enough
-  # that only alpha * beta_q is constrained (alpha -> 0, beta_q -> inf, b -> bound).
-  S0f:     {stimulus: S,    action: none,  choice: none, fixed: {beta_q: 5.0}, about: "S0, beta_q fixed at 5"}
-  S+Rf:    {stimulus: S,    action: V,     choice: none, fixed: {beta_q: 5.0}, about: "S+R, beta_q fixed at 5"}
-  S+Cf:    {stimulus: S,    action: none,  choice: ck,   fixed: {beta_q: 5.0}, about: "S+C, beta_q fixed at 5"}
-  S+R+Cf:  {stimulus: S,    action: V,     choice: ck,   fixed: {beta_q: 5.0}, about: "S+R+C, beta_q fixed at 5"}
+  # A fixed temperature is a sensitivity setting, not proof of identifiability.
+  S0f:     {stimulus: S, fixed: {beta_q: 5.0}, about: "S0, beta_q fixed at 5"}
+  S+Rf:    {stimulus: S, action: V, fixed: {beta_q: 5.0}, about: "S+R, beta_q fixed at 5"}
+  S+Cf:    {stimulus: S, choice: ck, fixed: {beta_q: 5.0}, about: "S+C, beta_q fixed at 5"}
+  S+R+Cf:  {stimulus: S, action: V, choice: ck, fixed: {beta_q: 5.0}, about: "S+R+C, beta_q fixed at 5"}
+  S+Ff:    {stimulus: S, feedback: cf, fixed: {beta_q: 5.0}, about: "S+F, beta_q fixed at 5"}
+  S+F+Cf:  {stimulus: S, feedback: cf, choice: ck, fixed: {beta_q: 5.0}, about: "S+F+C, beta_q fixed at 5"}
+  S+R+Ff:  {stimulus: S, action: V, feedback: cf, fixed: {beta_q: 5.0}, about: "S+R+F, beta_q fixed at 5"}
+  S+R+F+Cf: {stimulus: S, action: V, feedback: cf, choice: ck, fixed: {beta_q: 5.0}, about: "S+R+F+C, beta_q fixed at 5"}
 
 sets:
-  core:      [M1, M2, S0, S+R, S+C, S+R+C, A0, A+R, A+C, A+R+C]
-  paper:     [A0, A+R]
+  core: [M1, M2, S0, S+R, S+C, S+R+C, A0, B0, A+C, B+C, S+F, S+F+C, A+F, A+F+C, B+F, B+F+C, S+R+F, S+R+F+C]
+  core_original: [M1, M2, S0, S+R, S+C, S+R+C, A0, B0, A+C, B+C]
+  feedback: [S0, S+C, S+F, S+F+C, A0, A+C, A+F, A+F+C, B0, B+C, B+F, B+F+C]
+  feedback_fixed: [S0f, S+Cf, S+Ff, S+F+Cf, A0, A+C, A+F, A+F+C, B0, B+C, B+F, B+F+C]
+  paper: [A0, B0]
   baselines: [M1, M2]
-  S:         [S0, S+R, S+C, S+R+C]
-  A:         [A0, A+R, A+C, A+R+C]
-  blind:     [M1, V, C, V+C]
-  S_fixed:   [S0f, S+Rf, S+Cf, S+R+Cf]
+  S: [S0, S+R, S+C, S+R+C, S+F, S+F+C, S+R+F, S+R+F+C]
+  S_extended: [S0, S+R, S+C, S+R+C, S+F, S+F+C, S+R+F, S+R+F+C]
+  reward_extension: [S+R, S+R+C, S+R+F, S+R+F+C]
+  A: [A0, A+C, A+F, A+F+C]
+  B: [B0, B+C, B+F, B+F+C]
+  blind: [M1, V, C, V+C, F, F+C]
+  S_fixed: [S0f, S+Rf, S+Cf, S+R+Cf, S+Ff, S+F+Cf, S+R+Ff, S+R+F+Cf]

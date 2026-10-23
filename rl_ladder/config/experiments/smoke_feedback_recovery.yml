@@ -1,0 +1,10 @@
+about: Small simulate-and-refit check, not evidence of model identifiability.
+task: model_recovery
+models: [S0f, S+Cf, S+Ff, S+F+Cf]
+datasets: [GS029]
+overrides:
+  validate.n_reps: 2
+  validate.param_source: prior
+  validate.accuracy_range: [0.0, 1.0]
+  fit.n_starts: 5
+  preprocess.window: {method: first_sessions, n: 3}

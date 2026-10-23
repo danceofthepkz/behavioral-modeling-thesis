@@ -5,6 +5,7 @@ Writes to <run>/summary/. Refuses to summarise an incomplete run unless
 
 fit             fits.csv, bic_wide__<variant>.csv, best_counts.csv, bms.csv,
                 contrasts.csv, replication.csv (collect.reference = legacy)
+cv              cv_scores.csv, cv_wide__<variant>.csv, cv_contrasts.csv, cv_verification.csv
 param_recovery  param_recovery.csv, param_recovery_summary.csv, *.png
 model_recovery  model_recovery.csv, confusion_counts__<v>.csv,
                 confusion_frac__<v>.csv, inversion__<v>.csv, *.png
@@ -20,9 +21,9 @@ import pandas as pd
 from .config import reference_root
 from .fit.bms import family_log_evidence, vb_bms
 from .models import params as P
-from .models.registry import SLOTS
+from .models.registry import SLOTS, canonical_name
 from .service import atomic_write_json, context, read_json
-from .tasks import run_dir, unit_output_path
+from .tasks import run_dir, runtime_key, unit_output_path
 
 
 def _load(plan):
@@ -50,7 +51,7 @@ def _bms_rows(variant, wide, ctx):
     for slot in SLOTS:
         groups = {}
         for j, m in enumerate(models):
-            groups.setdefault(getattr(ctx.models[m], slot), []).append(j)
+            groups.setdefault(getattr(ctx.models[canonical_name(m)], slot), []).append(j)
         if len(groups) < 2:
             continue
         names = sorted(groups)
@@ -73,7 +74,8 @@ def _collect_fit(done, cfg, out, prefix, ctx):
                "n_starts": r["n_starts"], "n_repeated": r["n_repeated"],
                "at_bound": ";".join(r["at_bound"]), "best_start": r["best_start"],
                "ct_source": r["ct_source"], "n_ct": r["n_ct"], "data_file": r["data_file"]}
-        for key in ("cv_nll_per_trial", "cv_test_nll", "cv_n_test"):
+        row["feedback_interpretation"] = r.get("feedback_interpretation")
+        for key in ("cv_nll_per_trial", "cv_test_nll", "cv_n_test", "cv_success"):
             if key in r:
                 row[key] = r[key]
         row.update({f"p_{k}": v for k, v in r["params"].items()})
@@ -114,11 +116,11 @@ def _collect_fit(done, cfg, out, prefix, ctx):
         ref_path = ref_dir / "reference_legacy.json" if ref_dir else None
         if ref_path and ref_path.exists():
             ref = json.loads(ref_path.read_text())
-            name = {"summary_3param_081123.csv": "A0", "summary_4param_231023.csv": "A+R"}
+            name = {"summary_3param_081123.csv": "A0", "summary_4param_231023.csv": "B0"}
             rep = []
             for t in ref:
                 model = name.get(t["model"])
-                hit = fits[(fits.mouse == t["mouse"]) & (fits.model == model)]
+                hit = fits[(fits.mouse == t["mouse"]) & (fits.model.map(canonical_name) == model)]
                 for _, h in hit.iterrows():
                     rep.append({"variant": h.variant, "mouse": t["mouse"], "model": model,
                                 "nll_ours": h.nll, "nll_published": t["nll"],
@@ -137,8 +139,8 @@ def _collect_param_recovery(done, out, prefix, ctx, plots):
             spec = P.BY_NAME[name]
             rows.append({"variant": unit["variant"], "model": unit["model"], "rep": unit["rep"],
                          "template": unit["template"], "param": name, "true": true,
-                         "fit": r["fit"][name], "true_z": P.to_z(spec, max(true, 1e-300)),
-                         "fit_z": P.to_z(spec, max(r["fit"][name], 1e-300)),
+                         "fit": r["fit"][name], "true_z": P.to_z(spec, true),
+                         "fit_z": P.to_z(spec, r["fit"][name]),
                          "accuracy": r["accuracy"], "optimizer_miss": r["optimizer_miss"],
                          "at_bound": name in r["at_bound"]})
     df = pd.DataFrame(rows)
@@ -156,16 +158,45 @@ def _collect_param_recovery(done, out, prefix, ctx, plots):
 
 
 def _collect_model_recovery(done, out, prefix, ctx, plots):
-    rows = []
+    from .validate import audit_model_recovery
+    rows, audits = [], []
     for unit, o in done:
         r = o["result"]
+        audit = audit_model_recovery(ctx, unit, r)
+        if o.get("key") != runtime_key(unit):
+            audit.update(verified=False, passed=False, error="Output key differs from plan or data")
+        audits.append({"variant": unit["variant"], "id": unit["id"],
+                       "template": unit["template"], **audit})
         for cand, c in r["candidates"].items():
             rows.append({"variant": unit["variant"], "generating": r["generating"],
                          "rep": unit["rep"], "template": unit["template"], "candidate": cand,
                          "bic": c["bic"], "nll": c["nll"], "k": c["k"],
-                         "winner": cand == r["winner"], "accuracy": r["accuracy"]})
+                         "winner": cand == r["winner"], "accuracy": r["accuracy"],
+                         "success": c.get("success"), "message": c.get("message", "unrecorded"),
+                         "n_starts": c.get("n_starts"), "n_failed": c.get("n_failed"),
+                         "n_repeated": c.get("n_repeated"),
+                         "at_bound": ",".join(c.get("at_bound", [])),
+                         "dataset_passed": audit["passed"]})
     df = pd.DataFrame(rows)
     df.to_csv(out / f"{prefix}model_recovery.csv", index=False)
+    pd.DataFrame(audits).to_csv(out / f"{prefix}recovery_verification.csv", index=False)
+    quality = {"n_datasets": len(audits), "n_candidates": len(rows),
+               "n_verified": sum(a["verified"] for a in audits),
+               "n_converged_candidates": sum(c.get("success", False) for _, o in done
+                                               for c in o["result"]["candidates"].values()),
+               "n_passed": sum(a["passed"] for a in audits),
+               "passed_present_units": all(a["passed"] for a in audits),
+               "partial": bool(prefix),
+               "failed": [a for a in audits if not a["passed"]]}
+    atomic_write_json(out / f"{prefix}recovery_quality.json", quality)
+    if not quality["passed_present_units"]:
+        # Do not discard troublesome simulations or publish stale matrices.
+        for pattern in ("confusion_counts__*.csv", "confusion_frac__*.csv", "inversion__*.csv",
+                        "confusion__*.png"):
+            for path in out.glob(prefix + pattern):
+                path.unlink()
+        print("Recovery quality checks failed; matrices withheld. Inspect recovery_quality.json.")
+        return False
     for variant, g in df.groupby("variant"):
         order = list(dict.fromkeys(g.candidate))
         wins = g[g.winner]
@@ -179,6 +210,21 @@ def _collect_model_recovery(done, out, prefix, ctx, plots):
         if plots:
             _plot_matrix(frac, f"P(fit | generating), {variant}",
                          out / f"{prefix}confusion__{variant}.png")
+    print(f"Recovery verified: {quality['n_verified']}/{quality['n_datasets']}; "
+          f"candidate fits converged: {quality['n_converged_candidates']}/{quality['n_candidates']}")
+    return True
+
+
+def verify_recovery_plan(plan_path):
+    """Strict recovery audit, including completeness, regardless of legacy settings."""
+    plan = read_json(plan_path)
+    if plan["task"] != "model_recovery":
+        raise ValueError("verify-recovery requires a model_recovery plan")
+    status = collect(plan_path, plots=False)
+    quality_path = run_dir(plan) / "summary" / "recovery_quality.json"
+    if status or not quality_path.exists():
+        return 1
+    return 0 if read_json(quality_path)["passed_present_units"] else 1
 
 
 def _collect_ppc(done, out, prefix):
@@ -276,13 +322,84 @@ def collect(plan_path, allow_partial=False, plots=True):
     task = plan["task"]
     if task == "fit":
         _collect_fit(done, cfg, out, prefix, ctx)
+        if cfg["collect"].get("require_fit_success", False):
+            failed = [u["id"]+" @ "+u["variant"] for u, o in done if not o["result"]["success"]]
+            nested = [{"id": u["id"], "variant": u["variant"], "parent": parent,
+                       "excess_nll": o["result"]["nll"]-score}
+                      for u, o in done for parent, score in o["result"]["parent_nll"].items()
+                      if o["result"]["nll"] > score+1e-4]
+            quality = {"n_present": len(done), "n_converged": len(done)-len(failed),
+                       "failed": failed, "nested_violations": nested,
+                       "passed_present_units": not failed and not nested, "partial": bool(prefix)}
+            atomic_write_json(out/f"{prefix}fit_quality.json", quality)
+            if not quality["passed_present_units"]:
+                print("Full-fit convergence or nesting checks failed; inspect fit_quality.json.")
+                return 1
+        if cfg["evaluate"]["cv"]["method"] == "chrono":
+            if not _collect_cv(done, cfg, out, prefix, ctx):
+                print("Embedded CV failed score/convergence checks; inspect cv_verification.csv.")
+                return 1
+    elif task == "cv":
+        if not _collect_cv(done, cfg, out, prefix, ctx):
+            print("CV records failed score verification or training convergence; inspect cv_verification.csv.")
+            return 1
     elif task == "param_recovery":
         _collect_param_recovery(done, out, prefix, ctx, plots)
     elif task == "model_recovery":
-        _collect_model_recovery(done, out, prefix, ctx, plots)
+        passed = _collect_model_recovery(done, out, prefix, ctx, plots)
+        if not passed and cfg["collect"].get("require_fit_success", False):
+            return 1
     elif task == "ppc":
         _collect_ppc(done, out, prefix)
     print(f"Summaries written to {out}")
     for f in sorted(Path(out).iterdir()):
         print("  ", f.name)
     return 0
+
+
+def _collect_cv(done, cfg, out, prefix, ctx):
+    """Report CV without manufacturing full-data likelihoods or BIC values."""
+    from .audit_cv import audit_outputs
+    verified = audit_outputs(done, ctx)
+    verified.to_csv(out/f"{prefix}cv_verification.csv", index=False)
+    rows = []
+    for unit, outer in done:
+        r = outer["result"]
+        fit = r.get("cv_record", {}).get("training_fit", {})
+        row = {"variant": unit["variant"], "label": unit["label"], "mouse": unit["mouse"],
+               "model": unit["model"], "cv_success": r.get("cv_success", False),
+               "cv_train_sessions": r.get("cv_train_sessions"),
+               "cv_test_nll": r.get("cv_test_nll"), "cv_n_test": r.get("cv_n_test"),
+               "cv_nll_per_trial": r.get("cv_nll_per_trial"),
+               "train_nll": fit.get("nll"), "train_n_scored": fit.get("n_lik"),
+               "n_starts": fit.get("n_starts"), "n_failed": fit.get("n_failed"),
+               "n_repeated": fit.get("n_repeated"), "at_bound": ";".join(fit.get("at_bound", []))}
+        row.update({f"train_p_{k}": v for k, v in fit.get("params", {}).items()})
+        rows.append(row)
+    scores = pd.DataFrame(rows).merge(verified, on=["variant", "model", "mouse"])
+    scores.to_csv(out/f"{prefix}cv_scores.csv", index=False)
+    passed = bool(verified.verified.all() and verified.training_converged.all())
+    atomic_write_json(out/f"{prefix}cv_quality.json", {
+        "n_present": len(done), "n_verified": int(verified.verified.sum()),
+        "n_training_converged": int(verified.training_converged.sum()),
+        "passed_present_units": passed, "partial": bool(prefix)})
+    # Do not give invalid or unconverged records a model ranking.
+    if not passed:
+        for stale in list(out.glob(f"{prefix}cv_wide__*.csv")) + [out/f"{prefix}cv_contrasts.csv"]:
+            if stale.exists():
+                stale.unlink()
+        return False
+    contrasts = []
+    for variant, sub in scores.groupby("variant"):
+        wide = sub.pivot(index="mouse", columns="model", values="cv_nll_per_trial")
+        wide.to_csv(out/f"{prefix}cv_wide__{variant}.csv")
+        for extended, base in cfg["collect"]["contrasts"] or []:
+            if extended in wide and base in wide:
+                gain = (wide[base]-wide[extended]).dropna()
+                contrasts.append({"variant": variant, "extended": extended, "baseline": base,
+                                  "n_mice": len(gain), "mean_gain_nats_per_trial": float(gain.mean()),
+                                  "median_gain_nats_per_trial": float(gain.median()),
+                                  "n_gain_gt_1e_8": int((gain>1e-8).sum())})
+    if contrasts:
+        pd.DataFrame(contrasts).to_csv(out/f"{prefix}cv_contrasts.csv", index=False)
+    return True

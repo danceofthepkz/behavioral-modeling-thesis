@@ -1,0 +1,7 @@
+_include: feedback_param_recovery
+about: Parameter recovery for the 18 primary models under both main reset policies.
+models: core
+grid:
+  model.session_reset:
+    - [wsls, feedback]
+    - [wsls, choice, feedback]

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .config import load_datasets_yaml, load_models_yaml, results_root, stable_hash
 from .data import load_mouse
-from .evaluate import evaluate_fit
+from .evaluate import chrono_cv, evaluate_fit, verify_cv_record
 from .fit.mle import fit_mle
 from .models import params as P
 from .models.registry import build_registry, parents, reset_flags
@@ -24,7 +24,7 @@ from .preprocess import preprocess
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 SCIENCE_SOURCES = ("models", "fit", "data.py", "preprocess.py", "evaluate.py", "validate.py",
-                   "ppc.py")
+                   "ppc.py", "provenance.py", "service.py", "tasks.py", "audit_cv.py")
 
 
 def code_version():
@@ -35,6 +35,9 @@ def code_version():
         for f in files:
             h.update(str(f.relative_to(PACKAGE_DIR)).encode())
             h.update(f.read_bytes())
+    # A YAML change can alter a model without changing kernel.py. Include it
+    # so previously completed plan units cannot be mistaken for the new model.
+    h.update(json.dumps(load_models_yaml(), sort_keys=True).encode())
     return h.hexdigest()[:12]
 
 
@@ -86,6 +89,41 @@ def warm_start_from(spec, parent_params):
     return {name: parent_params.get(name, P.BY_NAME[name].neutral) for name in spec.free}
 
 
+def get_cv(ctx, model_name, mouse, cfg):
+    """Fit only chronological training blocks, leaving all full-data fits intact."""
+    if cfg["evaluate"]["cv"]["method"] != "chrono":
+        raise ValueError("The cv task requires evaluate.cv.method=chrono")
+    spec = ctx.models[model_name]
+    raw = load_mouse(mouse, cfg)
+    trials, lik = preprocess(raw, cfg)
+    key = fit_key(ctx, spec, mouse, raw.meta["sha256"], cfg)
+    path = results_root(cfg)/"cache"/"cv"/spec.slug/mouse/f"{key}.json"
+    reset = reset_flags(cfg["model"]["session_reset"])
+    if path.exists():
+        cached = read_json(path)
+        verify_cv_record(spec, trials, lik, reset, cached)
+        return cached
+    warm, parent_nll = [], {}
+    if cfg["evaluate"]["cv"].get("warm_start_from_nested", False):
+        for parent in parents(spec, ctx.models):
+            previous = get_cv(ctx, parent, mouse, cfg)
+            training = previous["cv_record"]["training_fit"]
+            warm.append(warm_start_from(spec, training["params"]))
+            parent_nll[parent] = training["nll"]
+    seed = seed_for(cfg["fit"]["seed"], model_name, mouse) + 7
+    result = chrono_cv(spec, trials, lik, reset, cfg["fit"], seed,
+                       cfg["evaluate"]["cv"]["train_frac"], warm_starts=warm,
+                       training_parent_nll=parent_nll)
+    result.update({"model": model_name, "mouse": mouse, "spec": spec.to_dict(), "key": key,
+                   "data_file": raw.meta["file"], "data_sha256": raw.meta["sha256"],
+                   "variant_used": raw.meta["variant_used"], "ct_source": raw.ct_source,
+                   "n_trials": trials.n, "n_lik": float(lik.sum()), "n_ct": int(trials.is_ct.sum()),
+                   "code_version": ctx.code_version,
+                   "feedback_interpretation": "stimulus_history_equivalent" if spec.feedback == "cf" else None})
+    atomic_write_json(path, result)
+    return result
+
+
 def get_or_fit(ctx, model_name, mouse, cfg):
     """Fit one model to one mouse, or return the cached fit with the same key."""
     spec = ctx.models[model_name]
@@ -105,11 +143,13 @@ def get_or_fit(ctx, model_name, mouse, cfg):
             parent_nll[parent] = fit["nll"]
     seed = seed_for(cfg["fit"]["seed"], model_name, mouse)
     result = fit_mle(spec, trials, lik, reset, cfg["fit"], seed, warm)
-    result.update(evaluate_fit(spec, trials, lik, reset, result, cfg, seed))
+    cv = get_cv(ctx, model_name, mouse, cfg) if cfg["evaluate"]["cv"]["method"] == "chrono" else None
+    result.update(evaluate_fit(spec, trials, lik, reset, result, cfg, seed, cv_result=cv))
     result.update({
         "model": model_name, "mouse": mouse, "key": key, "spec": spec.to_dict(),
         "data_file": raw.meta["file"], "variant_used": raw.meta["variant_used"],
         "ct_source": raw.ct_source, "n_ct": int(trials.is_ct.sum()),
+        "feedback_interpretation": "stimulus_history_equivalent" if spec.feedback == "cf" else None,
         "parent_nll": parent_nll, "code_version": ctx.code_version,
     })
     atomic_write_json(path, result)

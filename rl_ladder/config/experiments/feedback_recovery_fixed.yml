@@ -1,0 +1,3 @@
+_include: feedback_recovery
+about: Prior model recovery for the fixed-temperature feedback comparison.
+models: feedback_fixed

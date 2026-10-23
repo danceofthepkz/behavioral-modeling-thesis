@@ -1,0 +1,17 @@
+_include: reward_ladder
+about: Complete R/C/F comparison with S inverse temperature fixed at 5, as a sensitivity analysis.
+models: S_fixed
+overrides:
+  collect.contrasts:
+    - [S+Rf, S0f]
+    - [S+R+Cf, S+Cf]
+    - [S+R+Ff, S+Ff]
+    - [S+R+F+Cf, S+F+Cf]
+    - [S+Cf, S0f]
+    - [S+R+Cf, S+Rf]
+    - [S+F+Cf, S+Ff]
+    - [S+R+F+Cf, S+R+Ff]
+    - [S+Ff, S0f]
+    - [S+F+Cf, S+Cf]
+    - [S+R+Ff, S+Rf]
+    - [S+R+F+Cf, S+R+Cf]
